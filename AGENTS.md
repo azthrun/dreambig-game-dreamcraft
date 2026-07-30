@@ -44,6 +44,36 @@ explicit seeds for anything generated, injected deltas for anything time-depende
 The **presentation layer is not automatically tested**: sky, fog, particles, shaders, animation
 readability, and HUD layout are verified by a human playing each milestone.
 
+### Running the suite
+
+```
+./run_tests.sh
+```
+
+Exits `0` when green, `1` when any test fails, `2` when the suite found no tests or evaluated no
+assertions — a suite that runs but asserts nothing is a broken suite, not a passing one. Override the
+engine location with `GODOT=/path/to/godot` if needed.
+
+`./run_tests.sh --selftest` runs `tests/selftest/`, which holds a deliberately failing test and is
+excluded from the normal run. It exists so the non-zero exit path is itself verified: a runner bug
+that swallowed failures would otherwise be indistinguishable from a green suite.
+
+### Writing a test
+
+Put `*_test.gd` under `tests/unit/` (pure logic) or `tests/integration/` (needs a `SceneTree` and
+physics). Start with `extends "res://tests/test_case.gd"` — extend **by path**, not by `class_name`,
+because global class names resolve through Godot's script class cache, which is not guaranteed to be
+current for a freshly added file in a headless run.
+
+Name methods `test_*`; the runner discovers them, sorts them for deterministic order, and constructs a
+fresh instance per test so state cannot leak between them. `before_each` / `after_each` are
+overridable. Assertions record failures rather than halting, so one bad assertion does not hide the
+rest of a test.
+
+Available: `assert_true`, `assert_false`, `assert_eq`, `assert_ne`, `assert_almost_eq` (float epsilon),
+`assert_in_range` (inclusive), `assert_has` / `assert_not_has` (arrays, packed arrays, dictionary keys,
+substrings), and `fail`.
+
 ## Agent skills
 
 ### Issue tracker
