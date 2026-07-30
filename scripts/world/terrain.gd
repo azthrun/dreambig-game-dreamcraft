@@ -8,8 +8,10 @@ extends Node3D
 ## finite-island decision buys — no chunk residency, no LOD, no async load hitches.
 
 const IslandGenerator := preload("res://scripts/world/island_generator.gd")
+const Heightmap := preload("res://scripts/world/heightmap.gd")
 const TerrainMesher := preload("res://scripts/world/terrain_mesher.gd")
 const Biome := preload("res://scripts/world/biome.gd")
+const WaterBuilder := preload("res://scripts/world/water_builder.gd")
 
 ## Any integer produces a complete, playable island. Fixed by default so a run is
 ## reproducible; a random seed per playthrough is a later concern.
@@ -57,6 +59,8 @@ func generate() -> void:
 			triangles += int(built["triangles"])
 			_spawn_tile(tx, tz, built, material)
 	var mesh_us := Time.get_ticks_usec() - mesh_start
+
+	_spawn_water()
 
 	_stats = {
 		"seed": world_seed,
@@ -106,6 +110,32 @@ func stat_lines() -> PackedStringArray:
 	lines.append("generate: %.0fms, mesh: %.0fms"
 			% [_stats["generate_ms"], _stats["mesh_ms"]])
 	return lines
+
+
+## Water surfaces get no collision at all, which is what makes the player fall
+## through into the swim state instead of standing on the sea.
+func _spawn_water() -> void:
+	var builder: RefCounted = WaterBuilder.new()
+	var material: Material = builder.build_material()
+
+	var water := Node3D.new()
+	water.name = "Water"
+	add_child(water)
+
+	var ocean := MeshInstance3D.new()
+	ocean.name = "Ocean"
+	ocean.mesh = builder.build_ocean_plane(_map)
+	ocean.material_override = material
+	ocean.position.y = float(Heightmap.SEA_LEVEL_M)
+	ocean.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	water.add_child(ocean)
+
+	var rivers := MeshInstance3D.new()
+	rivers.name = "Rivers"
+	rivers.mesh = builder.build_river_surface(_map)
+	rivers.material_override = material
+	rivers.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	water.add_child(rivers)
 
 
 func _spawn_tile(tile_x: int, tile_z: int, built: Dictionary,

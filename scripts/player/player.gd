@@ -39,6 +39,40 @@ const CROUCH_EYE_HEIGHT := 1.05
 const MOUSE_SENSITIVITY := 0.0022
 const PITCH_LIMIT_DEGREES := 89.0
 
+# --- swimming -----------------------------------------------------------------
+
+const SWIM_SPEED := 3.2
+
+## Swimming begins once the feet are this far under the surface. Wading with the chest
+## clear stays walking, which is what keeps a beach walkable and a 0.6 m river
+## crossable on foot.
+const SWIM_SUBMERGE_HEIGHT := 1.25
+
+## Swimming ends only once the player is this shallow — deliberately much less than
+## the depth needed to start.
+##
+## The hysteresis is required, not cosmetic. Buoyancy holds the player at
+## SWIM_FLOAT_DEPTH, which is shallower than the depth that starts a swim; with a
+## single threshold the player would surface, stop swimming, fall under gravity, start
+## swimming again, and oscillate every few frames.
+const SWIM_EXIT_DEPTH := 0.5
+
+## How deep the feet float below the surface once swimming, so the head stays clear.
+const SWIM_FLOAT_DEPTH := 1.05
+
+## How hard buoyancy pulls the body back to floating depth, per second.
+const BUOYANCY := 6.0
+const MAX_BUOYANT_SPEED := 4.0
+
+## Vertical speed when deliberately diving or surfacing.
+const SWIM_VERTICAL_SPEED := 2.6
+
+## Y of the ocean surface. Set by the world so the player does not have to know how
+## the sea was built.
+var water_level_y: float = 0.0
+
+var _swimming := false
+
 var _jump_velocity: float = sqrt(2.0 * GRAVITY * JUMP_HEIGHT_M)
 var _crouching := false
 
@@ -82,6 +116,20 @@ func is_crouching() -> bool:
 	return _crouching
 
 
+func is_swimming() -> bool:
+	return _swimming
+
+
+## How far the feet are below the water surface. Negative when out of the water.
+func depth_in_water() -> float:
+	return water_level_y - global_position.y
+
+
+## True once enough of the body is under the surface to begin swimming.
+func submerged() -> bool:
+	return depth_in_water() > SWIM_SUBMERGE_HEIGHT
+
+
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed(&"pause"):
 		if mouse_captured():
@@ -110,6 +158,11 @@ func _look(relative: Vector2) -> void:
 
 
 func _physics_process(delta: float) -> void:
+	_update_swim_state()
+	if _swimming:
+		_swim(delta)
+		return
+
 	_update_crouch(delta)
 
 	if not is_on_floor():
@@ -133,6 +186,42 @@ func _physics_process(delta: float) -> void:
 	move_and_slide()
 
 
+## Enters and leaves the swim state on two different thresholds, so floating at the
+## surface cannot bounce the player in and out of swimming.
+func _update_swim_state() -> void:
+	var depth := depth_in_water()
+	if _swimming:
+		_swimming = depth > SWIM_EXIT_DEPTH
+	else:
+		_swimming = depth > SWIM_SUBMERGE_HEIGHT
+
+
+## Swimming: no ground contact, no gravity. Buoyancy holds the body at floating depth
+## so the player surfaces on their own, and jump/crouch override it to rise or dive.
+func _swim(delta: float) -> void:
+	if _crouching:
+		set_crouching(false)
+
+	var wish := _wish_direction()
+	var horizontal := Vector3(velocity.x, 0.0, velocity.z)
+	horizontal = horizontal.move_toward(wish * SWIM_SPEED, ACCELERATION * delta)
+	velocity.x = horizontal.x
+	velocity.z = horizontal.z
+
+	if Input.is_action_pressed(&"jump"):
+		velocity.y = SWIM_VERTICAL_SPEED
+	elif Input.is_action_pressed(&"crouch"):
+		velocity.y = -SWIM_VERTICAL_SPEED
+	else:
+		# Settle towards floating depth rather than snapping, so the surface is not a
+		# hard ceiling the player sticks to.
+		var target_y := water_level_y - SWIM_FLOAT_DEPTH
+		velocity.y = clampf((target_y - global_position.y) * BUOYANCY,
+				-MAX_BUOYANT_SPEED, MAX_BUOYANT_SPEED)
+
+	move_and_slide()
+
+
 ## Movement input as a unit vector in world space, relative to where the player is
 ## facing.
 func _wish_direction() -> Vector3:
@@ -147,6 +236,8 @@ func _wish_direction() -> Vector3:
 
 
 func current_speed() -> float:
+	if _swimming:
+		return SWIM_SPEED
 	if _crouching:
 		return CROUCH_SPEED
 	if Input.is_action_pressed(&"sprint") and is_on_floor():

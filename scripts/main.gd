@@ -69,6 +69,10 @@ func _place_player(terrain: Node) -> String:
 	if map == null:
 		return "player: no heightmap, left at origin"
 
+	# The player needs the sea's Y to know when it is swimming; it should not have to
+	# know how the water was built.
+	player.water_level_y = 0.0
+
 	var ground: int = map.height_at_world(0.0, 0.0)
 	player.global_position = Vector3(0.0, float(ground) + SPAWN_CLEARANCE_M, 0.0)
 	return "player: spawned at ground %dm" % ground
