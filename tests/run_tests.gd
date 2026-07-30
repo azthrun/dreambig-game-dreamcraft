@@ -98,6 +98,15 @@ func _run_script(path: String, totals: Dictionary,
 		failure_log.append("%s: failed to load" % path)
 		return
 
+	# A script with a parse error still loads as an object, but uncompiled. Report
+	# that as a compile failure rather than as a wrong base class, which would send
+	# someone looking in entirely the wrong place.
+	if not script.can_instantiate():
+		printerr("  %s failed to compile, skipping" % path)
+		totals["failed"] += 1
+		failure_log.append("%s: failed to compile (see parse errors above)" % path)
+		return
+
 	if not _extends_test_case(script):
 		printerr("  %s does not extend test_case.gd, skipping" % path)
 		totals["failed"] += 1

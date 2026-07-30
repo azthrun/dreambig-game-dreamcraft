@@ -32,17 +32,53 @@ const EXPECTED_ACTIONS: Array[StringName] = [
 ]
 
 
+## Overview camera framing, used until the first-person controller replaces it.
+## Deliberately exceeds the 500 m view budget: the point of this scene is to show
+## the whole island at once. The real budget applies once the camera is on the
+## ground.
+const OVERVIEW_FOV := 70.0
+const OVERVIEW_FAR := 4000.0
+
+
 func _ready() -> void:
 	var missing := missing_actions()
-	for line in report_lines(missing):
+	var lines := report_lines(missing)
+
+	var terrain := get_node_or_null(^"Terrain")
+	if terrain != null:
+		lines.append_array(terrain.stat_lines())
+		_frame_island(terrain)
+
+	for line in lines:
 		print(line)
 
 	var label := get_node_or_null(^"UI/BootLabel") as Label
 	if label != null:
-		label.text = "\n".join(report_lines(missing))
+		label.text = "\n".join(lines)
 
 	if not missing.is_empty():
 		push_error("Input map incomplete, missing: %s" % ", ".join(missing))
+
+
+## Pulls the camera back far enough to see the whole island, derived from its actual
+## extent rather than a hard-coded distance.
+func _frame_island(terrain: Node) -> void:
+	var camera := get_node_or_null(^"Camera3D") as Camera3D
+	if camera == null:
+		return
+
+	var extent := 2048.0
+	var map: RefCounted = terrain.heightmap()
+	if map != null:
+		extent = map.size_m()
+
+	camera.fov = OVERVIEW_FOV
+	camera.far = OVERVIEW_FAR
+	# Distance needed to fit `extent` across the vertical field of view, with a
+	# little margin, then lifted to look down on the terraces from an angle.
+	var distance := (extent * 0.5) / tan(deg_to_rad(OVERVIEW_FOV * 0.5))
+	camera.position = Vector3(0.0, distance * 0.62, distance * 0.78)
+	camera.look_at(Vector3.ZERO)
 
 
 ## Returns the names of expected actions that the input map does not declare.
