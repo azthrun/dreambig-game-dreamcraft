@@ -23,7 +23,9 @@ The load-bearing rules. Full rationale, including rejected alternatives, is in S
   or `SceneTree` dependency. `Node` scenes are thin shells that read from them and hold no
   authoritative state. This is what makes the codebase testable headlessly.
 - **Performance budget: 1600×900, 60 FPS, ~500 m view distance.** The target machine is an 8 GB M2,
-  and that memory ceiling is the binding constraint on design choices.
+  and that memory ceiling is the binding constraint on design choices. The budget lives in
+  `project.godot` under `[dreamcraft]` and is read through `scripts/config.gd` — never hard-code it.
+  Measure with `./run_perf.sh`; measured results and startup costs are in `docs/performance.md`.
 - **Single-player only.** No networking. World generation is nonetheless deterministic from an
   integer seed.
 - **Input via named input-map actions**, never raw key reads.

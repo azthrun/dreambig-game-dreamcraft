@@ -32,6 +32,14 @@ const EXPECTED_ACTIONS: Array[StringName] = [
 ]
 
 
+const Config := preload("res://scripts/config.gd")
+const PerfProbe := preload("res://scripts/perf_probe.gd")
+
+## Sky horizon and distance fog share this colour, so terrain fading out at the far
+## plane fades into the sky rather than into a differently-coloured wall. Deriving both
+## from one constant is what stops them drifting apart.
+const HORIZON_COLOUR := Color(0.66, 0.75, 0.84)
+
 ## Height above the terrace the player is dropped from, so they settle onto the
 ## surface under gravity rather than starting embedded in it.
 const SPAWN_CLEARANCE_M := 1.5
@@ -40,6 +48,8 @@ const SPAWN_CLEARANCE_M := 1.5
 func _ready() -> void:
 	var missing := missing_actions()
 	var lines := report_lines(missing)
+
+	_configure_view()
 
 	var terrain := get_node_or_null(^"Terrain")
 	if terrain != null:
@@ -56,6 +66,56 @@ func _ready() -> void:
 
 	if not missing.is_empty():
 		push_error("Input map incomplete, missing: %s" % ", ".join(missing))
+
+	if OS.get_cmdline_user_args().has("--perf"):
+		_start_perf_probe()
+
+
+## Sets the far plane and distance fog from the configured budget, and matches the sky
+## horizon to the fog so the two blend.
+func _configure_view() -> void:
+	var view := Config.view_distance_m()
+
+	var camera := _player_camera()
+	if camera != null:
+		camera.far = view
+
+	var world_env := get_node_or_null(^"WorldEnvironment") as WorldEnvironment
+	if world_env == null or world_env.environment == null:
+		return
+	var env: Environment = world_env.environment
+
+	env.fog_enabled = true
+	# Depth fog rather than exponential: it can be made fully opaque exactly at the far
+	# plane, which is what hides the plane instead of merely softening it.
+	env.fog_mode = Environment.FOG_MODE_DEPTH
+	env.fog_depth_begin = view * Config.fog_start_fraction()
+	env.fog_depth_end = view
+	env.fog_depth_curve = 1.0
+	env.fog_density = 1.0
+	env.fog_light_color = HORIZON_COLOUR
+	# The sky is the thing terrain fades into, so it must not itself be fogged.
+	env.fog_sky_affect = 0.0
+	env.fog_aerial_perspective = 0.0
+
+	if env.sky != null and env.sky.sky_material is ProceduralSkyMaterial:
+		var sky_material: ProceduralSkyMaterial = env.sky.sky_material
+		sky_material.sky_horizon_color = HORIZON_COLOUR
+		sky_material.ground_horizon_color = HORIZON_COLOUR
+
+
+func _player_camera() -> Camera3D:
+	var player := get_node_or_null(^"Player")
+	if player == null:
+		return null
+	return player.get_node_or_null(^"Camera3D") as Camera3D
+
+
+func _start_perf_probe() -> void:
+	var probe := PerfProbe.new()
+	probe.name = "PerfProbe"
+	add_child(probe)
+	probe.start(get_node_or_null(^"Player"))
 
 
 ## Builds the props. Driven from here rather than from the Props node's own _ready, so

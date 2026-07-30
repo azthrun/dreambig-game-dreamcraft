@@ -7,10 +7,9 @@ extends Node3D
 const PropPlacer := preload("res://scripts/world/props/prop_placer.gd")
 const PropFactory := preload("res://scripts/world/props/prop_factory.gd")
 const PropKind := preload("res://scripts/world/props/prop_kind.gd")
+const Config := preload("res://scripts/config.gd")
 
-## Props are hidden past this distance, per the performance budget. Terrain stays
-## visible much further out, so the horizon still reads as an island.
-const CULL_DISTANCE_M := 150.0
+
 
 var _counts: Dictionary = {}
 
@@ -61,4 +60,7 @@ func stat_lines() -> PackedStringArray:
 func _apply_culling(prop: Node3D) -> void:
 	for child in prop.get_children():
 		if child is GeometryInstance3D:
-			(child as GeometryInstance3D).visibility_range_end = CULL_DISTANCE_M
+			# Props stop drawing well before terrain does: the island must read to the
+			# horizon, but thousands of trees need not.
+			(child as GeometryInstance3D).visibility_range_end = \
+					Config.prop_cull_distance_m()
