@@ -34,6 +34,7 @@ const EXPECTED_ACTIONS: Array[StringName] = [
 
 const Config := preload("res://scripts/config.gd")
 const PerfProbe := preload("res://scripts/perf_probe.gd")
+const ScreenshotProbe := preload("res://scripts/screenshot_probe.gd")
 
 ## Sky horizon and distance fog share this colour, so terrain fading out at the far
 ## plane fades into the sky rather than into a differently-coloured wall. Deriving both
@@ -67,8 +68,11 @@ func _ready() -> void:
 	if not missing.is_empty():
 		push_error("Input map incomplete, missing: %s" % ", ".join(missing))
 
-	if OS.get_cmdline_user_args().has("--perf"):
+	var args := OS.get_cmdline_user_args()
+	if args.has("--perf"):
 		_start_perf_probe()
+	elif args.has("--screenshot"):
+		_start_screenshot_probe(args)
 
 
 ## Sets the far plane and distance fog from the configured budget, and matches the sky
@@ -109,6 +113,19 @@ func _player_camera() -> Camera3D:
 	if player == null:
 		return null
 	return player.get_node_or_null(^"Camera3D") as Camera3D
+
+
+## Captures viewport PNGs and exits. Output directory is taken from the argument after
+## --screenshot, defaulting to user:// when none is given.
+func _start_screenshot_probe(args: PackedStringArray) -> void:
+	var output_dir := "user://"
+	var index := args.find("--screenshot")
+	if index >= 0 and index + 1 < args.size():
+		output_dir = args[index + 1]
+	var probe := ScreenshotProbe.new()
+	probe.name = "ScreenshotProbe"
+	add_child(probe)
+	probe.start(get_node_or_null(^"Player"), output_dir)
 
 
 func _start_perf_probe() -> void:

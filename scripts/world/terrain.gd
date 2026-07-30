@@ -48,7 +48,7 @@ func generate() -> void:
 	var gen_us := Time.get_ticks_usec() - gen_start
 
 	var mesher: RefCounted = TerrainMesher.new()
-	var material := _build_material()
+	var material: Material = mesher.build_material()
 	var per_axis: int = mesher.tiles_per_axis(_map)
 
 	var mesh_start := Time.get_ticks_usec()
@@ -162,14 +162,3 @@ func _spawn_tile(tile_x: int, tile_z: int, built: Dictionary,
 	collider.name = "Collision"
 	collider.shape = shape
 	body.add_child(collider)
-
-
-func _build_material() -> StandardMaterial3D:
-	var material := StandardMaterial3D.new()
-	# Colour comes from the mesh's vertex colours, so one material covers the
-	# whole island regardless of terrain type.
-	material.vertex_color_use_as_albedo = true
-	material.roughness = 0.95
-	material.metallic = 0.0
-	material.specular_mode = BaseMaterial3D.SPECULAR_DISABLED
-	return material

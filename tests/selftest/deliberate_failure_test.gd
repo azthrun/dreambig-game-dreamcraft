@@ -18,3 +18,10 @@ func test_this_fails_on_purpose() -> void:
 
 func test_this_also_fails_on_purpose() -> void:
 	fail("deliberate failure: proves multiple failures are collected")
+
+
+func test_this_asserts_nothing_on_purpose() -> void:
+	# Proves the runner treats an assertion-free test as a failure. A GDScript runtime
+	# error cannot be caught, so a test that errors before its first assertion looks
+	# exactly like this — and would otherwise report green.
+	pass

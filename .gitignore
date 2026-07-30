@@ -20,3 +20,6 @@ obj/
 
 # macOS
 .DS_Store
+
+# Screenshots are captured output, not source.
+screenshots/

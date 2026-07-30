@@ -141,6 +141,18 @@ func _run_script(path: String, totals: Dictionary,
 		var failures: Array = case.failures()
 		totals["tests"] += 1
 		totals["assertions"] += case.assertion_count()
+
+		# A test that evaluated no assertions did not pass, it failed to run. GDScript
+		# runtime errors cannot be caught, so a test that errors partway through simply
+		# stops — and without this it would report green having asserted nothing.
+		if failures.is_empty() and case.assertion_count() == 0:
+			totals["failed"] += 1
+			print("  FAIL  %s" % method)
+			print("        asserted nothing (did it error? see output above)")
+			failure_log.append("%s -> %s: asserted nothing"
+					% [path.get_file(), method])
+			continue
+
 		if failures.is_empty():
 			print("  PASS  %s" % method)
 		else:

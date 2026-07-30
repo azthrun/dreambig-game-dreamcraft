@@ -147,6 +147,26 @@ func build_tile(map: RefCounted, tile_x: int, tile_z: int) -> Dictionary:
 	}
 
 
+## Material for terrain meshes.
+##
+## Lives here rather than with the spawning code because this module decides the vertex
+## colours, and how they must be interpreted is part of that decision.
+func build_material() -> StandardMaterial3D:
+	var material := StandardMaterial3D.new()
+	# One material covers the whole island; colour comes from the mesh.
+	material.vertex_color_use_as_albedo = true
+	# Vertex colours are authored in sRGB, the same space as the biome palette above.
+	# Without this, Godot treats them as already-linear and every terrain colour renders
+	# far too pale — a 0.45 grey arrives on screen at roughly 0.70. Props never showed
+	# the problem because they use albedo_color, which Godot converts; only vertex
+	# colours are passed through untouched.
+	material.vertex_color_is_srgb = true
+	material.roughness = 0.95
+	material.metallic = 0.0
+	material.specular_mode = BaseMaterial3D.SPECULAR_DISABLED
+	return material
+
+
 ## Colour for a cell, from its biome. Height is consulted only where a biome spans a
 ## visible range: ocean depth, and snow on high peaks.
 func colour_for_cell(biome: int, height_m: int) -> Color:

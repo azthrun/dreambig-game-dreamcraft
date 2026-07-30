@@ -155,3 +155,14 @@ func test_colour_reflects_depth_and_snow_within_a_biome() -> void:
 			TerrainMesher.COLOUR_ROCK)
 	assert_eq(mesher.colour_for_cell(Biome.Kind.MOUNTAINS, 90),
 			TerrainMesher.COLOUR_SNOW)
+
+
+func test_terrain_material_declares_vertex_colours_as_srgb() -> void:
+	# The biome palette is authored in sRGB. Without this flag Godot treats vertex
+	# colours as already-linear and the entire island renders washed out — a bug that
+	# is invisible to every other test here, since nothing else looks at pixels.
+	var material: StandardMaterial3D = _mesher().build_material()
+	assert_true(material.vertex_color_use_as_albedo,
+			"terrain colour comes from the mesh, not from albedo_color")
+	assert_true(material.vertex_color_is_srgb,
+			"vertex colours must be converted from sRGB or terrain renders pale")

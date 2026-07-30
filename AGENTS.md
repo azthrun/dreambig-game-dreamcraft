@@ -43,8 +43,25 @@ Two seams, deliberately minimised:
 Tests assert on externally observable behaviour, never on internal structure, and are deterministic —
 explicit seeds for anything generated, injected deltas for anything time-dependent.
 
-The **presentation layer is not automatically tested**: sky, fog, particles, shaders, animation
-readability, and HUD layout are verified by a human playing each milestone.
+The **presentation layer has no automated tests**, but it is not unverifiable. Run:
+
+```
+./run_screenshot.sh
+```
+
+This captures the game's own viewport to PNGs at ground level, lifted, and high. A headless
+run has no rendering device — nothing can be culled, lit, or seen — so anything about
+appearance needs a windowed run and a look at the output.
+
+Use it for anything a test cannot reach: whether geometry renders at all, face winding,
+colour, fog, sky, and later particles and animation. It is not a substitute for a human
+judging whether the game *looks good*, but it does catch things that are plainly wrong.
+It found the washed-out terrain palette that a hundred passing headless tests had no way
+to see.
+
+Note the asymmetry it revealed: props use `albedo_color`, which Godot converts from sRGB,
+while mesh vertex colours are passed through as linear. Any material relying on vertex
+colours needs `vertex_color_is_srgb = true` or it renders far too pale.
 
 ### Running the suite
 
