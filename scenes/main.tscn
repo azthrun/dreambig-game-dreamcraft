@@ -5,6 +5,8 @@
 [ext_resource type="PackedScene" path="res://scenes/player.tscn" id="3_player"]
 [ext_resource type="Script" path="res://scripts/world/props.gd" id="4_props"]
 [ext_resource type="Script" path="res://scripts/world/sky.gd" id="5_sky"]
+[ext_resource type="Script" path="res://scripts/world/weather.gd" id="6_weather"]
+[ext_resource type="Script" path="res://scripts/ui/debug_overlay.gd" id="7_overlay"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_0wfyh"]
 
@@ -35,6 +37,9 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0)
 shadow_enabled = false
 light_energy = 0.09
 
+[node name="Weather" type="Node" parent="."]
+script = ExtResource("6_weather")
+
 [node name="Terrain" type="Node3D" parent="."]
 script = ExtResource("2_terrain")
 
@@ -46,6 +51,7 @@ script = ExtResource("4_props")
 [node name="UI" type="CanvasLayer" parent="." unique_id=2091520569]
 
 [node name="BootLabel" type="Label" parent="UI" unique_id=2070876947]
+script = ExtResource("7_overlay")
 offset_left = 16.0
 offset_top = 12.0
 offset_right = 16.0

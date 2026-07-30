@@ -47,10 +47,6 @@ func _ready() -> void:
 
 	_configure_view()
 
-	var sky_node := get_node_or_null(^"Sky")
-	if sky_node != null:
-		lines.append(sky_node.status_line())
-
 	var terrain := get_node_or_null(^"Terrain")
 	if terrain != null:
 		lines.append_array(terrain.stat_lines())
@@ -60,9 +56,16 @@ func _ready() -> void:
 	for line in lines:
 		print(line)
 
-	var label := get_node_or_null(^"UI/BootLabel") as Label
-	if label != null:
-		label.text = "\n".join(lines)
+	# Sky and weather are live, so the overlay re-reads them each frame rather than
+	# being handed a snapshot that goes stale the moment it is drawn.
+	var label := get_node_or_null(^"UI/BootLabel")
+	if label != null and label.has_method(&"configure"):
+		var sources: Array[Node] = []
+		for path in [^"Sky", ^"Weather"]:
+			var node := get_node_or_null(path)
+			if node != null:
+				sources.append(node)
+		label.configure(lines, sources)
 
 	if not missing.is_empty():
 		push_error("Input map incomplete, missing: %s" % ", ".join(missing))
@@ -142,6 +145,12 @@ func _populate_props(terrain: Node) -> PackedStringArray:
 	if props == null or map == null:
 		return PackedStringArray()
 	props.populate(map, terrain.world_seed)
+
+	# Weather is seeded from the world, so a given island always gets the same weather.
+	var weather := get_node_or_null(^"Weather")
+	if weather != null:
+		weather.weather_seed = terrain.world_seed
+
 	return props.stat_lines()
 
 
