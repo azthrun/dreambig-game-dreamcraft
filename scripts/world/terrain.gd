@@ -9,6 +9,7 @@ extends Node3D
 
 const IslandGenerator := preload("res://scripts/world/island_generator.gd")
 const TerrainMesher := preload("res://scripts/world/terrain_mesher.gd")
+const Biome := preload("res://scripts/world/biome.gd")
 
 ## Any integer produces a complete, playable island. Fixed by default so a run is
 ## reproducible; a random seed per playthrough is a later concern.
@@ -69,6 +70,9 @@ func generate() -> void:
 		"land_fraction": _map.land_fraction(),
 		"generate_ms": gen_us / 1000.0,
 		"mesh_ms": mesh_us / 1000.0,
+		"river_sources": _map.river_sources,
+		"rivers_to_sea": _map.rivers_to_sea,
+		"biomes": _map.biome_counts(),
 	}
 
 	for line in stat_lines():
@@ -88,6 +92,17 @@ func stat_lines() -> PackedStringArray:
 			% [_stats["min_height_m"], _stats["max_height_m"],
 			_stats["land_fraction"] * 100.0])
 	lines.append("triangles: %d" % _stats["triangles"])
+	lines.append("rivers: %d of %d reached the sea"
+			% [_stats["rivers_to_sea"], _stats["river_sources"]])
+	var counts: Dictionary = _stats["biomes"]
+	var total := 0
+	for kind in counts:
+		total += int(counts[kind])
+	var parts := PackedStringArray()
+	for kind in Biome.ALL:
+		var count := int(counts.get(kind, 0))
+		parts.append("%s %.1f%%" % [Biome.name_of(kind), 100.0 * count / total])
+	lines.append("biomes: %s" % ", ".join(parts))
 	lines.append("generate: %.0fms, mesh: %.0fms"
 			% [_stats["generate_ms"], _stats["mesh_ms"]])
 	return lines

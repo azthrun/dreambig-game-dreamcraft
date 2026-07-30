@@ -13,6 +13,7 @@ extends RefCounted
 ## No Node, no SceneTree.
 
 const Heightmap := preload("res://scripts/world/heightmap.gd")
+const Biome := preload("res://scripts/world/biome.gd")
 
 ## Cells along one axis of a tile. The island splits into
 ## (cells_per_axis / TILE_CELLS)^2 tiles, each independently frustum-cullable.
@@ -26,14 +27,21 @@ const TILE_CELLS := 64
 ## device to cull against. If terrain renders inside-out or invisible, flip this.
 const FLIP_WINDING := false
 
-## Placeholder height colouring so the island is legible on screen. Replaced by
-## real per-biome colour when biomes land.
-const COLOUR_DEEP := Color(0.11, 0.20, 0.30)
-const COLOUR_SHALLOW := Color(0.29, 0.44, 0.51)
-const COLOUR_SAND := Color(0.80, 0.74, 0.53)
-const COLOUR_GRASS := Color(0.29, 0.47, 0.24)
-const COLOUR_ROCK := Color(0.44, 0.42, 0.40)
-const COLOUR_SNOW := Color(0.92, 0.94, 0.96)
+## Per-biome colour, so the terrain reads as geography rather than as a height ramp.
+const COLOUR_DEEP := Color(0.09, 0.17, 0.28)
+const COLOUR_SHALLOW := Color(0.24, 0.42, 0.52)
+const COLOUR_SAND := Color(0.81, 0.75, 0.55)
+const COLOUR_PLAINS := Color(0.44, 0.58, 0.29)
+const COLOUR_FOREST := Color(0.19, 0.36, 0.20)
+const COLOUR_ROCK := Color(0.45, 0.43, 0.41)
+const COLOUR_SNOW := Color(0.93, 0.95, 0.97)
+const COLOUR_RIVER := Color(0.27, 0.50, 0.62)
+
+## Mountains above this height wear snow. Purely visual; the biome is unchanged.
+const SNOW_LINE_M := 70
+
+## Ocean deeper than this uses the darker colour.
+const DEEP_WATER_M := -12
 
 
 func tiles_per_axis(map: RefCounted) -> int:
@@ -81,7 +89,7 @@ func build_tile(map: RefCounted, tile_x: int, tile_z: int) -> Dictionary:
 			var x1 := x0 + cs
 			var h: int = map.height_at_cell(cx, cz)
 			var y := float(h)
-			var colour := colour_for_height(h)
+			var colour := colour_for_cell(map.biome_at_cell(cx, cz), h)
 
 			# Top face, counter-clockwise seen from +Y.
 			cursor = _add_quad(vertices, normals, colours, cursor,
@@ -139,19 +147,23 @@ func build_tile(map: RefCounted, tile_x: int, tile_z: int) -> Dictionary:
 	}
 
 
-## Placeholder colour ramp by height in metres.
-func colour_for_height(height_m: int) -> Color:
-	if height_m <= -12:
-		return COLOUR_DEEP
-	if height_m <= Heightmap.SEA_LEVEL_M:
-		return COLOUR_SHALLOW
-	if height_m <= 2:
-		return COLOUR_SAND
-	if height_m <= 46:
-		return COLOUR_GRASS
-	if height_m <= 72:
-		return COLOUR_ROCK
-	return COLOUR_SNOW
+## Colour for a cell, from its biome. Height is consulted only where a biome spans a
+## visible range: ocean depth, and snow on high peaks.
+func colour_for_cell(biome: int, height_m: int) -> Color:
+	match biome:
+		Biome.Kind.OCEAN:
+			return COLOUR_DEEP if height_m <= DEEP_WATER_M else COLOUR_SHALLOW
+		Biome.Kind.BEACH:
+			return COLOUR_SAND
+		Biome.Kind.PLAINS:
+			return COLOUR_PLAINS
+		Biome.Kind.FOREST:
+			return COLOUR_FOREST
+		Biome.Kind.MOUNTAINS:
+			return COLOUR_SNOW if height_m >= SNOW_LINE_M else COLOUR_ROCK
+		Biome.Kind.RIVER:
+			return COLOUR_RIVER
+	return COLOUR_PLAINS
 
 
 ## Appends a quad as two triangles. (a, b, c, d) must be counter-clockwise as seen

@@ -7,6 +7,7 @@ extends "res://tests/test_case.gd"
 
 const TerrainMesher := preload("res://scripts/world/terrain_mesher.gd")
 const Heightmap := preload("res://scripts/world/heightmap.gd")
+const Biome := preload("res://scripts/world/biome.gd")
 
 const CELLS := 4
 const CELL_SIZE := 4.0
@@ -134,9 +135,23 @@ func test_tiles_cover_the_whole_heightmap() -> void:
 			"tile grid must cover every cell")
 
 
-func test_colour_ramp_distinguishes_water_from_land() -> void:
+func test_each_biome_gets_its_own_colour() -> void:
 	var mesher := _mesher()
-	assert_ne(mesher.colour_for_height(-20), mesher.colour_for_height(20))
-	assert_eq(mesher.colour_for_height(-20), TerrainMesher.COLOUR_DEEP)
-	assert_eq(mesher.colour_for_height(0), TerrainMesher.COLOUR_SHALLOW)
-	assert_eq(mesher.colour_for_height(90), TerrainMesher.COLOUR_SNOW)
+	var seen := {}
+	for kind in Biome.ALL:
+		var colour: Color = mesher.colour_for_cell(kind, 10)
+		assert_false(seen.has(colour),
+				"%s shares a colour with another biome" % Biome.name_of(kind))
+		seen[colour] = true
+
+
+func test_colour_reflects_depth_and_snow_within_a_biome() -> void:
+	var mesher := _mesher()
+	assert_eq(mesher.colour_for_cell(Biome.Kind.OCEAN, -20),
+			TerrainMesher.COLOUR_DEEP)
+	assert_eq(mesher.colour_for_cell(Biome.Kind.OCEAN, -2),
+			TerrainMesher.COLOUR_SHALLOW)
+	assert_eq(mesher.colour_for_cell(Biome.Kind.MOUNTAINS, 55),
+			TerrainMesher.COLOUR_ROCK)
+	assert_eq(mesher.colour_for_cell(Biome.Kind.MOUNTAINS, 90),
+			TerrainMesher.COLOUR_SNOW)

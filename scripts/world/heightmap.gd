@@ -1,5 +1,9 @@
 extends RefCounted
-## The island's terrain data: one quantized height per cell.
+## The island's per-cell world grid: a quantized height and a biome per cell.
+##
+## Named for the heightmap because that is its load-bearing content, but it carries
+## the biome classification on the same grid, since nothing ever needs one without
+## the other.
 ##
 ## Heights are whole metres by construction — the terraced silhouette SPEC.md
 ## calls for depends on it, and so does the step-up rule in the player controller.
@@ -16,14 +20,24 @@ const SEA_LEVEL_M := 0
 var cells_per_axis: int
 var cell_size_m: float
 
+## How many rivers were seeded, and how many of those reached the sea. Recorded by
+## the generator so a river that dead-ends inland is detectable rather than merely
+## invisible.
+var river_sources: int = 0
+var rivers_to_sea: int = 0
+
 var _heights: PackedInt32Array
+var _biomes: PackedByteArray
 
 
 func _init(p_cells_per_axis: int, p_cell_size_m: float) -> void:
 	cells_per_axis = p_cells_per_axis
 	cell_size_m = p_cell_size_m
+	var count := p_cells_per_axis * p_cells_per_axis
 	_heights = PackedInt32Array()
-	_heights.resize(p_cells_per_axis * p_cells_per_axis)
+	_heights.resize(count)
+	_biomes = PackedByteArray()
+	_biomes.resize(count)
 
 
 ## Total island extent in metres along one axis.
@@ -45,6 +59,35 @@ func height_at_cell(cx: int, cz: int) -> int:
 	var x := clampi(cx, 0, cells_per_axis - 1)
 	var z := clampi(cz, 0, cells_per_axis - 1)
 	return _heights[z * cells_per_axis + x]
+
+
+func set_biome(cx: int, cz: int, kind: int) -> void:
+	_biomes[cz * cells_per_axis + cx] = kind
+
+
+## Biome at a cell, clamping out-of-range coordinates to the nearest edge.
+func biome_at_cell(cx: int, cz: int) -> int:
+	var x := clampi(cx, 0, cells_per_axis - 1)
+	var z := clampi(cz, 0, cells_per_axis - 1)
+	return _biomes[z * cells_per_axis + x]
+
+
+func biome_at_world(world_x: float, world_z: float) -> int:
+	var cell := world_to_cell(world_x, world_z)
+	return biome_at_cell(cell.x, cell.y)
+
+
+## Cell count per biome, keyed by Biome.Kind.
+func biome_counts() -> Dictionary:
+	var counts := {}
+	for kind in _biomes:
+		counts[kind] = int(counts.get(kind, 0)) + 1
+	return counts
+
+
+## Raw biome data. Exposed for determinism comparisons in tests.
+func biomes() -> PackedByteArray:
+	return _biomes
 
 
 ## World position (metres, island centred on the origin) to cell coordinates.
