@@ -8,6 +8,9 @@ enum Kind {
 	TREE,
 	ROCK_OUTCROP,
 	BERRY_BUSH,
+	OVERHANG,
+	CAVE_MOUTH,
+	THICKET,
 }
 
 ## What harvesting a prop produces. NONE means the prop is not harvestable.
@@ -18,10 +21,28 @@ enum Yield {
 	BERRIES,
 }
 
+## Props that give up a resource when harvested.
+const HARVESTABLE: Array[int] = [
+	Kind.TREE,
+	Kind.ROCK_OUTCROP,
+	Kind.BERRY_BUSH,
+]
+
+## Props that shelter the player from the weather. These yield nothing — they are
+## worth something for standing under, not for taking apart.
+const COVER: Array[int] = [
+	Kind.OVERHANG,
+	Kind.CAVE_MOUTH,
+	Kind.THICKET,
+]
+
 const ALL: Array[int] = [
 	Kind.TREE,
 	Kind.ROCK_OUTCROP,
 	Kind.BERRY_BUSH,
+	Kind.OVERHANG,
+	Kind.CAVE_MOUTH,
+	Kind.THICKET,
 ]
 
 
@@ -33,6 +54,12 @@ static func name_of(kind: int) -> String:
 			return "rock_outcrop"
 		Kind.BERRY_BUSH:
 			return "berry_bush"
+		Kind.OVERHANG:
+			return "overhang"
+		Kind.CAVE_MOUTH:
+			return "cave_mouth"
+		Kind.THICKET:
+			return "thicket"
 	return "unknown"
 
 
@@ -60,7 +87,15 @@ static func yield_name(resource: int) -> String:
 	return "none"
 
 
-## Whether the player is blocked by this prop. Bushes are pushed through; trunks and
-## outcrops are not.
+## Whether the player is blocked by this prop. Bushes are pushed through; everything
+## else has some solid part.
 static func is_solid(kind: int) -> bool:
 	return kind != Kind.BERRY_BUSH
+
+
+## Whether standing inside this prop shelters the player from the weather.
+##
+## Cover exists because cold damage needs counter-play and this game has no building:
+## a player caught in a storm must be able to get out of it using the landscape.
+static func is_cover(kind: int) -> bool:
+	return COVER.has(kind)

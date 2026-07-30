@@ -123,8 +123,8 @@ func test_every_kind_appears_somewhere() -> void:
 
 
 func test_each_kind_declares_what_it_yields() -> void:
-	# Harvesting reads the yield from the kind, so no kind may be silently worthless.
-	for kind in PropKind.ALL:
+	# Harvesting reads the yield from the kind, so no harvestable may be worthless.
+	for kind in PropKind.HARVESTABLE:
 		var resource: int = PropKind.yield_of(kind)
 		assert_ne(resource, PropKind.Yield.NONE,
 				"%s yields nothing" % PropKind.name_of(kind))

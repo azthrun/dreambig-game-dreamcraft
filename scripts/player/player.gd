@@ -73,6 +73,13 @@ var water_level_y: float = 0.0
 
 var _swimming := false
 
+## Counts overlapping shelter volumes rather than a plain flag.
+##
+## A counter matters wherever cover props overlap — a thicket beside an overhang, say.
+## With a boolean, stepping out of one volume while still inside the other would clear
+## the state and expose the player to weather they are plainly standing out of.
+var _shelter_count := 0
+
 var _jump_velocity: float = sqrt(2.0 * GRAVITY * JUMP_HEIGHT_M)
 var _crouching := false
 
@@ -118,6 +125,21 @@ func is_crouching() -> bool:
 
 func is_swimming() -> bool:
 	return _swimming
+
+
+## True while inside at least one cover prop's shelter volume.
+func is_sheltered() -> bool:
+	return _shelter_count > 0
+
+
+## Called by a shelter volume when the player walks in.
+func enter_shelter() -> void:
+	_shelter_count += 1
+
+
+## Called by a shelter volume when the player walks out.
+func exit_shelter() -> void:
+	_shelter_count = maxi(0, _shelter_count - 1)
 
 
 ## How far the feet are below the water surface. Negative when out of the water.

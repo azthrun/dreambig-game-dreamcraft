@@ -32,7 +32,23 @@ const DENSITY := {
 		Biome.Kind.PLAINS: 0.055,
 		Biome.Kind.FOREST: 0.030,
 	},
+	# Cover props. Rarer than harvestables on purpose: shelter should be somewhere you
+	# head for, not something you are always standing in.
+	PropKind.Kind.OVERHANG: {
+		Biome.Kind.MOUNTAINS: 0.070,
+	},
+	PropKind.Kind.CAVE_MOUTH: {
+		Biome.Kind.MOUNTAINS: 0.028,
+	},
+	PropKind.Kind.THICKET: {
+		Biome.Kind.FOREST: 0.030,
+	},
 }
+
+## Overhangs and caves need a slope to sit against, so they are only considered on
+## cells with a neighbour at least this far below — the same 2 m drop that the player
+## cannot step up, which is what makes such a cell a hillside rather than a plateau.
+const HILLSIDE_DROP_M := 2
 
 ## Cells are considered on a stride rather than every cell, so props cannot form a
 ## dense lattice at 4 m spacing.
@@ -60,7 +76,7 @@ func place(map: RefCounted, seed_value: int) -> Array[Dictionary]:
 			if height <= Heightmap.SEA_LEVEL_M:
 				continue
 
-			var kind := _roll_kind(biome, height, rng)
+			var kind := _roll_kind(biome, height, _is_hillside(map, cx, cz), rng)
 			if kind < 0:
 				continue
 
@@ -85,14 +101,28 @@ func place(map: RefCounted, seed_value: int) -> Array[Dictionary]:
 
 ## Picks a kind for a cell, or -1 for nothing. Rolls once per kind in a fixed order so
 ## the result depends only on the seed and not on iteration order elsewhere.
-func _roll_kind(biome: int, height: int, rng: RandomNumberGenerator) -> int:
+func _roll_kind(biome: int, height: int, hillside: bool,
+		rng: RandomNumberGenerator) -> int:
 	for kind in PropKind.ALL:
 		var by_biome: Dictionary = DENSITY[kind]
 		var chance: float = by_biome.get(biome, 0.0)
 		if kind == PropKind.Kind.TREE and height > TREELINE_M:
+			chance = 0.0
+		if not hillside and (kind == PropKind.Kind.OVERHANG
+				or kind == PropKind.Kind.CAVE_MOUTH):
 			chance = 0.0
 		# Rolled even when the chance is zero, so the random sequence — and therefore
 		# every later placement — does not shift with the biome layout.
 		if rng.randf() < chance:
 			return kind
 	return -1
+
+
+## True when some neighbour sits far enough below to count as a slope face.
+func _is_hillside(map: RefCounted, cx: int, cz: int) -> bool:
+	var here: int = map.height_at_cell(cx, cz)
+	for offset in [Vector2i(-1, 0), Vector2i(1, 0),
+			Vector2i(0, -1), Vector2i(0, 1)]:
+		if here - map.height_at_cell(cx + offset.x, cz + offset.y) >= HILLSIDE_DROP_M:
+			return true
+	return false
