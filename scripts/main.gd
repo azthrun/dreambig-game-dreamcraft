@@ -33,6 +33,7 @@ const EXPECTED_ACTIONS: Array[StringName] = [
 
 
 const Config := preload("res://scripts/config.gd")
+const Spawn := preload("res://scripts/world/spawn.gd")
 const PerfProbe := preload("res://scripts/perf_probe.gd")
 const ScreenshotProbe := preload("res://scripts/screenshot_probe.gd")
 
@@ -61,7 +62,7 @@ func _ready() -> void:
 	var label := get_node_or_null(^"UI/BootLabel")
 	if label != null and label.has_method(&"configure"):
 		var sources: Array[Node] = []
-		for path in [^"Sky", ^"Weather", ^"WeatherEffects"]:
+		for path in [^"Sky", ^"Weather", ^"WeatherEffects", ^"Player"]:
 			var node := get_node_or_null(path)
 			if node != null:
 				sources.append(node)
@@ -176,9 +177,19 @@ func _place_player(terrain: Node) -> String:
 	# know how the water was built.
 	player.water_level_y = 0.0
 
-	var ground: int = map.height_at_world(0.0, 0.0)
-	player.global_position = Vector3(0.0, float(ground) + SPAWN_CLEARANCE_M, 0.0)
-	return "player: spawned at ground %dm" % ground
+	# Washed up on the shore, and returned there on death. The spawn is derived from the
+	# seed, so a given island always starts you in the same place.
+	var spawn: RefCounted = Spawn.new()
+	var shore: Vector3 = spawn.shore_spawn(map, terrain.world_seed)
+	player.respawn_point = shore
+	player.global_position = shore
+
+	var hud := get_node_or_null(^"UI/Hud")
+	if hud != null and hud.has_method(&"bind"):
+		hud.bind(player)
+
+	return "player: shore spawn at %.0f, %.0f (ground %dm)" % [
+		shore.x, shore.z, map.height_at_world(shore.x, shore.z)]
 
 
 ## Returns the names of expected actions that the input map does not declare.

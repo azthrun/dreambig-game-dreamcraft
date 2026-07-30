@@ -73,6 +73,15 @@ var water_level_y: float = 0.0
 
 var _swimming := false
 
+const SurvivalStats := preload("res://scripts/player/survival_stats.gd")
+
+signal died
+
+## Where death returns the player to. Set by the world once the island exists.
+var respawn_point := Vector3.ZERO
+
+var _stats: RefCounted = SurvivalStats.new()
+
 ## Counts overlapping shelter volumes rather than a plain flag.
 ##
 ## A counter matters wherever cover props overlap — a thicket beside an overhang, say.
@@ -125,6 +134,26 @@ func is_crouching() -> bool:
 
 func is_swimming() -> bool:
 	return _swimming
+
+
+## The player's condition. Read by the HUD and the overlay; mutated through eat/damage.
+func stats() -> RefCounted:
+	return _stats
+
+
+func status_line() -> String:
+	return _stats.status_line()
+
+
+## Returns the player to the shore with their condition reset. Progress is kept; only
+## position is lost.
+func respawn() -> void:
+	_stats.revive()
+	_swimming = false
+	_shelter_count = 0
+	velocity = Vector3.ZERO
+	set_crouching(false)
+	global_position = respawn_point
 
 
 ## True while inside at least one cover prop's shelter volume.
@@ -180,6 +209,14 @@ func _look(relative: Vector2) -> void:
 
 
 func _physics_process(delta: float) -> void:
+	# Sprinting is what the player is actually doing, not what they are asking for, so
+	# stamina is only spent on movement that happened.
+	_stats.tick(delta, _is_sprinting())
+	if _stats.is_dead():
+		died.emit()
+		respawn()
+		return
+
 	_update_swim_state()
 	if _swimming:
 		_swim(delta)
@@ -262,9 +299,19 @@ func current_speed() -> float:
 		return SWIM_SPEED
 	if _crouching:
 		return CROUCH_SPEED
-	if Input.is_action_pressed(&"sprint") and is_on_floor():
+	if _is_sprinting():
 		return SPRINT_SPEED
 	return WALK_SPEED
+
+
+## Sprinting requires the input, contact with the ground, and stamina left. An exhausted
+## player drops to a walk rather than sprinting on fumes.
+func _is_sprinting() -> bool:
+	return Input.is_action_pressed(&"sprint") \
+			and is_on_floor() \
+			and not _crouching \
+			and not _swimming \
+			and _stats.can_sprint()
 
 
 func _update_crouch(_delta: float) -> void:
