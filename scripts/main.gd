@@ -44,6 +44,7 @@ func _ready() -> void:
 	var terrain := get_node_or_null(^"Terrain")
 	if terrain != null:
 		lines.append_array(terrain.stat_lines())
+		lines.append_array(_populate_props(terrain))
 		lines.append(_place_player(terrain))
 
 	for line in lines:
@@ -55,6 +56,17 @@ func _ready() -> void:
 
 	if not missing.is_empty():
 		push_error("Input map incomplete, missing: %s" % ", ".join(missing))
+
+
+## Builds the props. Driven from here rather than from the Props node's own _ready, so
+## it cannot run before the terrain it needs exists.
+func _populate_props(terrain: Node) -> PackedStringArray:
+	var props := get_node_or_null(^"Props")
+	var map: RefCounted = terrain.heightmap()
+	if props == null or map == null:
+		return PackedStringArray()
+	props.populate(map, terrain.world_seed)
+	return props.stat_lines()
 
 
 ## Drops the player onto the island centre, which the generator guarantees is land.

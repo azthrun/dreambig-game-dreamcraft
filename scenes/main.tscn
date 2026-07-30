@@ -3,6 +3,7 @@
 [ext_resource type="Script" path="res://scripts/main.gd" id="1_o5qli"]
 [ext_resource type="Script" path="res://scripts/world/terrain.gd" id="2_terrain"]
 [ext_resource type="PackedScene" path="res://scenes/player.tscn" id="3_player"]
+[ext_resource type="Script" path="res://scripts/world/props.gd" id="4_props"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_0wfyh"]
 
@@ -27,6 +28,9 @@ shadow_enabled = true
 
 [node name="Terrain" type="Node3D" parent="."]
 script = ExtResource("2_terrain")
+
+[node name="Props" type="Node3D" parent="."]
+script = ExtResource("4_props")
 
 [node name="Player" parent="." instance=ExtResource("3_player")]
 
