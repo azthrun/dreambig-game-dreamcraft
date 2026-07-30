@@ -23,13 +23,20 @@ const COLOUR_STAMINA := Color(0.35, 0.68, 0.42)
 ## grows rather than a resource that depletes.
 const LABELS := ["health", "food", "stamina"]
 
+## Colour of the temperature readout when the player is losing health to the cold.
+const COLOUR_COLD := Color(0.55, 0.78, 1.0)
+const COLOUR_WARM := Color(1.0, 1.0, 1.0)
+
 var _player: Node
+var _climate: Node
 var _fills: Array[ColorRect] = []
 var _labels: Array[Label] = []
+var _temperature: Label
 
 
-func bind(player: Node) -> void:
+func bind(player: Node, climate: Node = null) -> void:
 	_player = player
+	_climate = climate
 
 
 func _ready() -> void:
@@ -54,6 +61,15 @@ func _process(_delta: float) -> void:
 	_set_bar(1, 1.0 - stats.hunger_fraction(),
 			stats.rate("max_hunger") - stats.hunger())
 	_set_bar(2, stats.stamina_fraction(), stats.stamina())
+
+	if _temperature != null and _climate != null \
+			and _climate.has_method(&"temperature_c"):
+		var cold: bool = _climate.is_cold()
+		# Says outright that the cold is doing damage, rather than leaving the player to
+		# infer it from a health bar that is quietly falling.
+		_temperature.text = "%.0f C%s" % [
+				_climate.temperature_c(), "  freezing" if cold else ""]
+		_temperature.modulate = COLOUR_COLD if cold else COLOUR_WARM
 
 
 func _set_bar(index: int, fraction: float, value: float) -> void:
@@ -91,6 +107,13 @@ func _build_bars() -> void:
 		label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		add_child(label)
 		_labels.append(label)
+
+	_temperature = Label.new()
+	_temperature.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
+	_temperature.position = Vector2(
+			MARGIN, -(MARGIN + float(count + 1) * (BAR_HEIGHT + BAR_GAP)))
+	_temperature.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_temperature)
 
 
 ## A rect anchored to the container's bottom-left, so `position.y` is measured upwards

@@ -39,6 +39,9 @@ const VIEWS := [
 	# that one global condition produces two different local results.
 	{"name": "snow", "offset": Vector3(0.0, 2.0, 0.0), "pitch_deg": -4.0,
 			"time": 0.42, "weather": 3, "summit": true},
+	# The worst place on the island at the worst hour: exposure should be lethal here.
+	{"name": "freezing", "offset": Vector3(0.0, 2.0, 0.0), "pitch_deg": 4.0,
+			"time": 0.00, "weather": 4, "summit": true},
 ]
 
 var _player: Node3D

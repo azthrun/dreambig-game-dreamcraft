@@ -9,6 +9,7 @@
 [ext_resource type="Script" path="res://scripts/ui/debug_overlay.gd" id="7_overlay"]
 [ext_resource type="Script" path="res://scripts/world/weather_effects.gd" id="8_fx"]
 [ext_resource type="Script" path="res://scripts/ui/hud.gd" id="9_hud"]
+[ext_resource type="Script" path="res://scripts/world/climate.gd" id="10_climate"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_0wfyh"]
 
@@ -44,6 +45,9 @@ script = ExtResource("6_weather")
 
 [node name="WeatherEffects" type="Node3D" parent="."]
 script = ExtResource("8_fx")
+
+[node name="Climate" type="Node" parent="."]
+script = ExtResource("10_climate")
 
 [node name="Terrain" type="Node3D" parent="."]
 script = ExtResource("2_terrain")

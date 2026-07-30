@@ -62,7 +62,7 @@ func _ready() -> void:
 	var label := get_node_or_null(^"UI/BootLabel")
 	if label != null and label.has_method(&"configure"):
 		var sources: Array[Node] = []
-		for path in [^"Sky", ^"Weather", ^"WeatherEffects", ^"Player"]:
+		for path in [^"Sky", ^"Weather", ^"WeatherEffects", ^"Climate", ^"Player"]:
 			var node := get_node_or_null(path)
 			if node != null:
 				sources.append(node)
@@ -184,9 +184,16 @@ func _place_player(terrain: Node) -> String:
 	player.respawn_point = shore
 	player.global_position = shore
 
+	# Climate needs the player and the terrain, so it is bound here rather than in its
+	# own _ready, which would run before either exists.
+	var climate := get_node_or_null(^"Climate")
+	if climate != null:
+		climate.bind(player, terrain, get_node_or_null(^"Sky"),
+				get_node_or_null(^"Weather"))
+
 	var hud := get_node_or_null(^"UI/Hud")
 	if hud != null and hud.has_method(&"bind"):
-		hud.bind(player)
+		hud.bind(player, climate)
 
 	return "player: shore spawn at %.0f, %.0f (ground %dm)" % [
 		shore.x, shore.z, map.height_at_world(shore.x, shore.z)]
