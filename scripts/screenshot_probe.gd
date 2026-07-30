@@ -44,6 +44,8 @@ const VIEWS := [
 			"time": 0.00, "weather": 4, "summit": true},
 	{"name": "inventory", "offset": Vector3(0.0, 2.0, 0.0), "pitch_deg": -6.0,
 			"time": 0.35, "weather": 0, "open_inventory": true},
+	{"name": "crafting", "offset": Vector3(0.0, 2.0, 0.0), "pitch_deg": -6.0,
+			"time": 0.35, "weather": 0, "open_crafting": true},
 ]
 
 ## Sample contents so the hotbar and inventory screen show something. Harvesting does not
@@ -130,11 +132,13 @@ func _capture_all() -> void:
 
 		# Precipitation spawns high above the player and falls, so a capture taken
 		# immediately after switching shows an empty sky. Waiting covers the fall time.
-		var screen := get_parent().get_node_or_null(^"UI/InventoryScreen")
-		if screen != null and screen.has_method(&"is_open"):
-			var want_open: bool = bool(view.get("open_inventory", false))
-			if screen.is_open() != want_open:
-				screen.toggle()
+		for entry in [[^"UI/InventoryScreen", "open_inventory"],
+				[^"UI/CraftingScreen", "open_crafting"]]:
+			var screen := get_parent().get_node_or_null(entry[0])
+			if screen != null and screen.has_method(&"is_open"):
+				var want_open: bool = bool(view.get(entry[1], false))
+				if screen.is_open() != want_open:
+					screen.toggle()
 
 		var settle: int = 90 if view.has("weather") else 6
 		for _i in settle:
