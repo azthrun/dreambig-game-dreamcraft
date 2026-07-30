@@ -32,12 +32,9 @@ const EXPECTED_ACTIONS: Array[StringName] = [
 ]
 
 
-## Overview camera framing, used until the first-person controller replaces it.
-## Deliberately exceeds the 500 m view budget: the point of this scene is to show
-## the whole island at once. The real budget applies once the camera is on the
-## ground.
-const OVERVIEW_FOV := 70.0
-const OVERVIEW_FAR := 4000.0
+## Height above the terrace the player is dropped from, so they settle onto the
+## surface under gravity rather than starting embedded in it.
+const SPAWN_CLEARANCE_M := 1.5
 
 
 func _ready() -> void:
@@ -47,7 +44,7 @@ func _ready() -> void:
 	var terrain := get_node_or_null(^"Terrain")
 	if terrain != null:
 		lines.append_array(terrain.stat_lines())
-		_frame_island(terrain)
+		lines.append(_place_player(terrain))
 
 	for line in lines:
 		print(line)
@@ -60,25 +57,21 @@ func _ready() -> void:
 		push_error("Input map incomplete, missing: %s" % ", ".join(missing))
 
 
-## Pulls the camera back far enough to see the whole island, derived from its actual
-## extent rather than a hard-coded distance.
-func _frame_island(terrain: Node) -> void:
-	var camera := get_node_or_null(^"Camera3D") as Camera3D
-	if camera == null:
-		return
+## Drops the player onto the island centre, which the generator guarantees is land.
+## Reads the terrace height from the heightmap rather than raycasting, since the
+## heightmap is authoritative and already in memory.
+func _place_player(terrain: Node) -> String:
+	var player := get_node_or_null(^"Player") as CharacterBody3D
+	if player == null:
+		return "player: missing"
 
-	var extent := 2048.0
 	var map: RefCounted = terrain.heightmap()
-	if map != null:
-		extent = map.size_m()
+	if map == null:
+		return "player: no heightmap, left at origin"
 
-	camera.fov = OVERVIEW_FOV
-	camera.far = OVERVIEW_FAR
-	# Distance needed to fit `extent` across the vertical field of view, with a
-	# little margin, then lifted to look down on the terraces from an angle.
-	var distance := (extent * 0.5) / tan(deg_to_rad(OVERVIEW_FOV * 0.5))
-	camera.position = Vector3(0.0, distance * 0.62, distance * 0.78)
-	camera.look_at(Vector3.ZERO)
+	var ground: int = map.height_at_world(0.0, 0.0)
+	player.global_position = Vector3(0.0, float(ground) + SPAWN_CLEARANCE_M, 0.0)
+	return "player: spawned at ground %dm" % ground
 
 
 ## Returns the names of expected actions that the input map does not declare.

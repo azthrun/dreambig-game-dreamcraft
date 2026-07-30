@@ -48,7 +48,10 @@ func _ready() -> void:
 	var failure_log: Array[String] = []
 
 	for path in scripts:
-		_run_script(path, totals, failure_log)
+		# Must be awaited: _run_script suspends whenever a test yields on a physics
+		# frame, and without awaiting here the runner would race ahead and quit
+		# before those tests ever resumed — reporting zero tests and still passing.
+		await _run_script(path, totals, failure_log)
 
 	print("")
 	print("%d scripts, %d tests, %d assertions, %d failed"
@@ -127,10 +130,13 @@ func _run_script(path: String, totals: Dictionary,
 	for method in methods:
 		# A fresh instance per test, so tests cannot leak state into each other.
 		var case: RefCounted = script.new()
+		case.set_test_root(self)
 		case.begin_test(method)
-		case.before_each()
-		case.call(method)
-		case.after_each()
+		# Awaited so integration tests can yield on physics frames. A test that
+		# never awaits simply resumes immediately.
+		await case.before_each()
+		await case.call(method)
+		await case.after_each()
 
 		var failures: Array = case.failures()
 		totals["tests"] += 1

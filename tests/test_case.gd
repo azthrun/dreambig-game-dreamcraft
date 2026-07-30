@@ -16,6 +16,27 @@ extends RefCounted
 var _failures: Array[String] = []
 var _assertion_count: int = 0
 var _current_test: String = ""
+var _test_root: Node = null
+
+
+## Set by the runner. Integration tests add nodes under this to get a live
+## SceneTree with physics; pure unit tests ignore it entirely.
+func set_test_root(node: Node) -> void:
+	_test_root = node
+
+
+func scene_root() -> Node:
+	return _test_root
+
+
+## Advances the physics simulation by a number of ticks. Only meaningful for
+## integration tests — anything that needs real collision rather than arithmetic.
+func step_physics(ticks: int = 1) -> void:
+	if _test_root == null:
+		fail("step_physics called without a test root")
+		return
+	for _i in ticks:
+		await _test_root.get_tree().physics_frame
 
 
 ## Overridable lifecycle hooks. Default to no-ops.
