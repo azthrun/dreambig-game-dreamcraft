@@ -19,6 +19,10 @@ const THUNDER_SECONDS := 2.6
 ## heavy rather than as a burst of noise.
 const THUNDER_SMOOTHING := 0.93
 
+## Fire sits between rain and thunder: duller than rain, far brighter than thunder.
+const FIRE_SECONDS := 3.0
+const FIRE_SMOOTHING := 0.74
+
 
 ## Looping rain. Seamless because the loop points are set to the whole buffer and the
 ## signal has no envelope to discontinue.
@@ -36,6 +40,36 @@ static func rain(seed_value: int = 12345) -> AudioStreamWAV:
 		# Taper the first and last few milliseconds into each other so the loop seam is
 		# inaudible even with the filter's memory reset.
 		var value := previous * 0.6
+		_write_sample(data, i, value)
+
+	var stream := AudioStreamWAV.new()
+	stream.format = AudioStreamWAV.FORMAT_16_BITS
+	stream.mix_rate = MIX_RATE
+	stream.stereo = false
+	stream.data = data
+	stream.loop_mode = AudioStreamWAV.LOOP_FORWARD
+	stream.loop_begin = 0
+	stream.loop_end = samples
+	return stream
+
+
+## Looping fire crackle: a duller hiss than rain, with occasional sharper pops so it
+## reads as burning rather than as running water.
+static func fire(seed_value: int = 24680) -> AudioStreamWAV:
+	var samples := int(MIX_RATE * FIRE_SECONDS)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = seed_value
+
+	var data := PackedByteArray()
+	data.resize(samples * 2)
+	var previous := 0.0
+	for i in samples:
+		var noise := rng.randf_range(-1.0, 1.0)
+		previous = lerpf(noise, previous, FIRE_SMOOTHING)
+		var value := previous * 0.42
+		# Sparse crackles on top of the hiss.
+		if rng.randf() < 0.0006:
+			value += rng.randf_range(-0.55, 0.55)
 		_write_sample(data, i, value)
 
 	var stream := AudioStreamWAV.new()

@@ -193,6 +193,12 @@ func _place_player(terrain: Node) -> String:
 		climate.bind(player, terrain, get_node_or_null(^"Sky"),
 				get_node_or_null(^"Weather"))
 
+	# Fires are parented to the world rather than to the player, so they stay where they
+	# were built, and registered with the climate as heat sources.
+	var placer: Node = player.item_placer()
+	if placer != null and placer.has_method(&"bind"):
+		placer.bind(player, _player_camera(), get_node_or_null(^"Props"), climate)
+
 	var hud := get_node_or_null(^"UI/Hud")
 	if hud != null and hud.has_method(&"bind"):
 		hud.bind(player, climate)

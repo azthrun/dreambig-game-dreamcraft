@@ -46,6 +46,12 @@ const VIEWS := [
 			"time": 0.35, "weather": 0, "open_inventory": true},
 	{"name": "crafting", "offset": Vector3(0.0, 2.0, 0.0), "pitch_deg": -6.0,
 			"time": 0.35, "weather": 0, "open_crafting": true},
+	# The M3 loop in one frame: the summit at midnight in a storm, which kills an exposed
+	# player, made survivable by a fire built from gathered wood.
+	# Feet on the ground, not hovering: the placement ray reaches only a few metres
+	# down, so a player floating above the terrain cannot reach it to build on.
+	{"name": "campfire", "offset": Vector3(0.0, 0.0, 0.0), "pitch_deg": -14.0,
+			"time": 0.00, "weather": 4, "summit": true, "light_fire": true},
 ]
 
 ## Sample contents so the hotbar and inventory screen show something. Harvesting does not
@@ -140,6 +146,9 @@ func _capture_all() -> void:
 				if screen.is_open() != want_open:
 					screen.toggle()
 
+		if bool(view.get("light_fire", false)):
+			_light_fire_in_front()
+
 		var settle: int = 90 if view.has("weather") else 6
 		for _i in settle:
 			await RenderingServer.frame_post_draw
@@ -157,6 +166,22 @@ func _capture_all() -> void:
 	camera.far = original_far
 	_player.set_physics_process(true)
 	get_tree().quit(0)
+
+
+## Builds a fire just in front of the player, as though they had placed one.
+func _light_fire_in_front() -> void:
+	var placer := _player.get_node_or_null(^"ItemPlacer")
+	if placer == null:
+		return
+	var inventory: RefCounted = _player.inventory()
+	inventory.add(3, 6)  # berries, so the hotbar is not empty in shot
+	inventory.add(8, 1)  # campfire
+	# Select the campfire slot, then use it.
+	for slot in 5:
+		if inventory.item_in_slot(slot) == 8:
+			inventory.select(slot)
+			break
+	placer.use_held_item()
 
 
 ## Highest point on the island, as a world position. Falls back to the given position

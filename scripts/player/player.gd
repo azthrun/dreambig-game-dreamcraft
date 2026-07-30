@@ -148,6 +148,12 @@ func stats() -> RefCounted:
 	return _stats
 
 
+## Uses the held item. Bound by the world, which supplies where fires are parented and
+## which climate registers them.
+func item_placer() -> Node:
+	return get_node_or_null(^"ItemPlacer")
+
+
 ## The harvest interaction, so the HUD can show its prompt.
 func harvester() -> Node:
 	return get_node_or_null(^"Harvester")
@@ -164,7 +170,9 @@ func eat_selected() -> bool:
 	var item: int = _inventory.selected_item()
 	if not ItemKind.is_food(item):
 		return false
-	# Refuse when already full, rather than consuming food for no benefit.
+	# Refused only when there is nothing at all to gain. A partial top-up is allowed:
+	# refusing it because some nutrition would be wasted would stop a player eating
+	# before heading somewhere dangerous, which is worse than the waste.
 	if _stats.eat(ItemKind.nutrition(item)) <= 0.0:
 		return false
 	_inventory.remove_from_slot(_inventory.selected_slot(), 1)
