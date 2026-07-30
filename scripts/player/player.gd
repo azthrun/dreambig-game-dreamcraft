@@ -74,6 +74,8 @@ var water_level_y: float = 0.0
 var _swimming := false
 
 const SurvivalStats := preload("res://scripts/player/survival_stats.gd")
+const Inventory := preload("res://scripts/items/inventory.gd")
+const ItemKind := preload("res://scripts/items/item_kind.gd")
 
 signal died
 
@@ -81,6 +83,7 @@ signal died
 var respawn_point := Vector3.ZERO
 
 var _stats: RefCounted = SurvivalStats.new()
+var _inventory: RefCounted = Inventory.new()
 
 ## Counts overlapping shelter volumes rather than a plain flag.
 ##
@@ -141,8 +144,26 @@ func stats() -> RefCounted:
 	return _stats
 
 
+## What the player is carrying. Harvesting, crafting and the HUD all go through this.
+func inventory() -> RefCounted:
+	return _inventory
+
+
+## Eats the held item if it is food. Returns whether anything was eaten, so the caller
+## can give feedback rather than the action failing silently.
+func eat_selected() -> bool:
+	var item: int = _inventory.selected_item()
+	if not ItemKind.is_food(item):
+		return false
+	# Refuse when already full, rather than consuming food for no benefit.
+	if _stats.eat(ItemKind.nutrition(item)) <= 0.0:
+		return false
+	_inventory.remove_from_slot(_inventory.selected_slot(), 1)
+	return true
+
+
 func status_line() -> String:
-	return _stats.status_line()
+	return "%s\n%s" % [_stats.status_line(), _inventory.status_line()]
 
 
 ## Returns the player to the shore with their condition reset. Progress is kept; only
@@ -197,6 +218,22 @@ func _unhandled_input(event: InputEvent) -> void:
 
 	if event is InputEventMouseMotion and mouse_captured():
 		_look(event.relative)
+		return
+
+	_handle_hotbar_input(event)
+
+
+## Scroll wheel cycles the hotbar; number keys jump straight to a slot.
+func _handle_hotbar_input(event: InputEvent) -> void:
+	if event.is_action_pressed(&"hotbar_next"):
+		_inventory.cycle_selection(1)
+	elif event.is_action_pressed(&"hotbar_prev"):
+		_inventory.cycle_selection(-1)
+	else:
+		for slot in Inventory.HOTBAR_SLOTS:
+			if event.is_action_pressed(StringName("hotbar_%d" % (slot + 1))):
+				_inventory.select(slot)
+				return
 
 
 func _look(relative: Vector2) -> void:

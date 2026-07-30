@@ -19,6 +19,12 @@ const COLOUR_HEALTH := Color(0.78, 0.22, 0.24)
 const COLOUR_HUNGER := Color(0.82, 0.60, 0.20)
 const COLOUR_STAMINA := Color(0.35, 0.68, 0.42)
 
+## Hotbar, drawn bottom-centre so it reads as "in hand" rather than as another stat.
+const SLOT_SIZE := 62.0
+const SLOT_GAP := 6.0
+const COLOUR_SLOT := Color(0.06, 0.07, 0.09, 0.72)
+const COLOUR_SLOT_SELECTED := Color(0.95, 0.85, 0.45, 0.92)
+
 ## Hunger is shown filling up rather than draining down, because it is a threat that
 ## grows rather than a resource that depletes.
 const LABELS := ["health", "food", "stamina"]
@@ -32,11 +38,17 @@ var _climate: Node
 var _fills: Array[ColorRect] = []
 var _labels: Array[Label] = []
 var _temperature: Label
+var _inventory: RefCounted
+var _slot_backings: Array[ColorRect] = []
+var _slot_labels: Array[Label] = []
 
 
 func bind(player: Node, climate: Node = null) -> void:
 	_player = player
 	_climate = climate
+	if _player != null and _player.has_method(&"inventory"):
+		_inventory = _player.inventory()
+		_build_hotbar()
 
 
 func _ready() -> void:
@@ -70,6 +82,8 @@ func _process(_delta: float) -> void:
 		_temperature.text = "%.0f C%s" % [
 				_climate.temperature_c(), "  freezing" if cold else ""]
 		_temperature.modulate = COLOUR_COLD if cold else COLOUR_WARM
+
+	_refresh_hotbar()
 
 
 func _set_bar(index: int, fraction: float, value: float) -> void:
@@ -114,6 +128,58 @@ func _build_bars() -> void:
 			MARGIN, -(MARGIN + float(count + 1) * (BAR_HEIGHT + BAR_GAP)))
 	_temperature.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_temperature)
+
+
+## Five slots across the bottom centre, the selected one outlined.
+func _build_hotbar() -> void:
+	const Inventory := preload("res://scripts/items/inventory.gd")
+	var count := Inventory.HOTBAR_SLOTS
+	var total_width := float(count) * SLOT_SIZE + float(count - 1) * SLOT_GAP
+
+	for i in count:
+		var x := -total_width * 0.5 + float(i) * (SLOT_SIZE + SLOT_GAP)
+
+		var backing := ColorRect.new()
+		# Anchored bottom-centre so the row stays centred at any resolution.
+		backing.anchor_left = 0.5
+		backing.anchor_right = 0.5
+		backing.anchor_top = 1.0
+		backing.anchor_bottom = 1.0
+		backing.position = Vector2(x, -(MARGIN + SLOT_SIZE))
+		backing.size = Vector2(SLOT_SIZE, SLOT_SIZE)
+		backing.color = COLOUR_SLOT
+		backing.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		add_child(backing)
+		_slot_backings.append(backing)
+
+		var label := Label.new()
+		label.position = Vector2(4.0, 4.0)
+		label.size = Vector2(SLOT_SIZE - 8.0, SLOT_SIZE - 8.0)
+		label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		# Small enough that a two-word item name and its count all fit inside the slot
+		# rather than the count being clipped off the bottom.
+		label.add_theme_font_size_override("font_size", 11)
+		label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		backing.add_child(label)
+		_slot_labels.append(label)
+
+
+func _refresh_hotbar() -> void:
+	if _inventory == null:
+		return
+	const ItemKind := preload("res://scripts/items/item_kind.gd")
+	for i in _slot_backings.size():
+		var selected: bool = i == _inventory.selected_slot()
+		_slot_backings[i].color = COLOUR_SLOT_SELECTED if selected \
+				else COLOUR_SLOT
+		var item: int = _inventory.item_in_slot(i)
+		if item == ItemKind.Kind.NONE:
+			_slot_labels[i].text = "%d" % (i + 1)
+		else:
+			_slot_labels[i].text = "%s\n%d" % [
+					ItemKind.name_of(item), _inventory.count_in_slot(i)]
+		_slot_labels[i].modulate = Color(0.1, 0.1, 0.12) if selected \
+				else Color(0.88, 0.90, 0.93)
 
 
 ## A rect anchored to the container's bottom-left, so `position.y` is measured upwards

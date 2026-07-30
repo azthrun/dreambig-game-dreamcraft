@@ -195,6 +195,10 @@ func _place_player(terrain: Node) -> String:
 	if hud != null and hud.has_method(&"bind"):
 		hud.bind(player, climate)
 
+	var inventory_screen := get_node_or_null(^"UI/InventoryScreen")
+	if inventory_screen != null and inventory_screen.has_method(&"bind"):
+		inventory_screen.bind(player)
+
 	return "player: shore spawn at %.0f, %.0f (ground %dm)" % [
 		shore.x, shore.z, map.height_at_world(shore.x, shore.z)]
 

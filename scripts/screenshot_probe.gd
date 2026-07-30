@@ -42,6 +42,17 @@ const VIEWS := [
 	# The worst place on the island at the worst hour: exposure should be lethal here.
 	{"name": "freezing", "offset": Vector3(0.0, 2.0, 0.0), "pitch_deg": 4.0,
 			"time": 0.00, "weather": 4, "summit": true},
+	{"name": "inventory", "offset": Vector3(0.0, 2.0, 0.0), "pitch_deg": -6.0,
+			"time": 0.35, "weather": 0, "open_inventory": true},
+]
+
+## Sample contents so the hotbar and inventory screen show something. Harvesting does not
+## exist yet, so without this every capture would show an empty bag.
+const SAMPLE_ITEMS := [
+	[1, 12],   # wood
+	[2, 7],    # stone
+	[3, 4],    # berries
+	[7, 1],    # stone tool
 ]
 
 var _player: Node3D
@@ -73,6 +84,11 @@ func _capture_all() -> void:
 	# would drag them back to the ground before the frame is captured — which silently
 	# made an above-the-snowline shot into a ground-level one.
 	_player.set_physics_process(false)
+
+	if _player.has_method(&"inventory"):
+		var inventory: RefCounted = _player.inventory()
+		for entry in SAMPLE_ITEMS:
+			inventory.add(int(entry[0]), int(entry[1]))
 
 	var base := _player.global_position
 	var summit := _find_summit(base)
@@ -114,6 +130,12 @@ func _capture_all() -> void:
 
 		# Precipitation spawns high above the player and falls, so a capture taken
 		# immediately after switching shows an empty sky. Waiting covers the fall time.
+		var screen := get_parent().get_node_or_null(^"UI/InventoryScreen")
+		if screen != null and screen.has_method(&"is_open"):
+			var want_open: bool = bool(view.get("open_inventory", false))
+			if screen.is_open() != want_open:
+				screen.toggle()
+
 		var settle: int = 90 if view.has("weather") else 6
 		for _i in settle:
 			await RenderingServer.frame_post_draw
