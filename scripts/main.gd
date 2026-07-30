@@ -62,7 +62,8 @@ func _ready() -> void:
 	var label := get_node_or_null(^"UI/BootLabel")
 	if label != null and label.has_method(&"configure"):
 		var sources: Array[Node] = []
-		for path in [^"Sky", ^"Weather", ^"WeatherEffects", ^"Climate", ^"Player"]:
+		for path in [^"Sky", ^"Weather", ^"WeatherEffects", ^"Climate", ^"Props",
+				^"Player"]:
 			var node := get_node_or_null(path)
 			if node != null:
 				sources.append(node)

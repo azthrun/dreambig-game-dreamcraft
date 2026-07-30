@@ -12,6 +12,14 @@ extends RefCounted
 
 const PropKind := preload("res://scripts/world/props/prop_kind.gd")
 const ShelterVolume := preload("res://scripts/world/props/shelter_volume.gd")
+const Harvestable := preload("res://scripts/world/props/harvestable.gd")
+const ItemKind := preload("res://scripts/items/item_kind.gd")
+
+## Physics layers. Solid props sit on the world layer and block movement; props that
+## should be reachable but not solid sit on the interaction layer, which the player's
+## movement does not mask against but the harvest ray does.
+const WORLD_LAYER := 1
+const INTERACTION_LAYER := 4
 
 const COLOUR_TRUNK := Color(0.34, 0.24, 0.16)
 const COLOUR_LEAVES := Color(0.16, 0.34, 0.18)
@@ -43,10 +51,14 @@ func _build_tree() -> Node3D:
 	var root := StaticBody3D.new()
 	root.name = "Tree"
 	_add_box(root, Vector3(0.0, 2.1, 0.0), Vector3(0.7, 4.2, 0.7), COLOUR_TRUNK)
-	_add_box(root, Vector3(0.0, 4.9, 0.0), Vector3(3.4, 2.4, 3.4), COLOUR_LEAVES)
-	_add_box(root, Vector3(0.0, 6.5, 0.0), Vector3(2.0, 1.4, 2.0), COLOUR_LEAVES)
+	# The canopy is what a harvest takes: a stripped tree is left as a bare trunk.
+	var canopy := _add_box(root, Vector3(0.0, 4.9, 0.0),
+			Vector3(3.4, 2.4, 3.4), COLOUR_LEAVES)
+	var crown := _add_box(root, Vector3(0.0, 6.5, 0.0),
+			Vector3(2.0, 1.4, 2.0), COLOUR_LEAVES)
 	# Only the trunk blocks movement; walking under a canopy should be possible.
 	_add_collider(root, Vector3(0.0, 2.1, 0.0), Vector3(0.7, 4.2, 0.7))
+	_add_harvestable(root, ItemKind.Kind.WOOD, 3, 180.0, [canopy, crown])
 	return root
 
 
@@ -54,18 +66,32 @@ func _build_outcrop() -> Node3D:
 	var root := StaticBody3D.new()
 	root.name = "RockOutcrop"
 	_add_box(root, Vector3(0.0, 0.6, 0.0), Vector3(2.6, 1.2, 2.2), COLOUR_ROCK)
-	_add_box(root, Vector3(0.5, 1.5, -0.3), Vector3(1.5, 1.4, 1.3), COLOUR_ROCK)
+	var upper := _add_box(root, Vector3(0.5, 1.5, -0.3),
+			Vector3(1.5, 1.4, 1.3), COLOUR_ROCK)
 	_add_collider(root, Vector3(0.0, 0.9, 0.0), Vector3(2.6, 1.8, 2.2))
+	_add_harvestable(root, ItemKind.Kind.STONE, 2, 210.0, [upper])
 	return root
 
 
 func _build_bush() -> Node3D:
-	# No StaticBody3D: a bush is scenery the player walks through.
-	var root := Node3D.new()
+	# On the interaction layer only: the player walks straight through a bush, but the
+	# harvest ray can still find it. Without a body of some kind it would be unreachable,
+	# and berries are the early game's only food.
+	var root := StaticBody3D.new()
 	root.name = "BerryBush"
+	root.collision_layer = INTERACTION_LAYER
+	root.collision_mask = 0
 	_add_box(root, Vector3(0.0, 0.5, 0.0), Vector3(1.5, 1.0, 1.5), COLOUR_BERRY_LEAF)
-	_add_box(root, Vector3(0.35, 1.0, 0.2), Vector3(0.3, 0.3, 0.3), COLOUR_BERRY)
-	_add_box(root, Vector3(-0.3, 0.85, -0.25), Vector3(0.3, 0.3, 0.3), COLOUR_BERRY)
+	# Only the berries are taken; the bush itself stays put and regrows them.
+	var berry_a := _add_box(root, Vector3(0.35, 1.0, 0.2),
+			Vector3(0.3, 0.3, 0.3), COLOUR_BERRY)
+	var berry_b := _add_box(root, Vector3(-0.3, 0.85, -0.25),
+			Vector3(0.3, 0.3, 0.3), COLOUR_BERRY)
+	# Taller than the bush looks. This is an interaction volume, not a solid one, so
+	# making it reach eye height costs nothing and means a player standing next to a
+	# waist-high bush can harvest it without first aiming down at their own feet.
+	_add_collider(root, Vector3(0.0, 0.95, 0.0), Vector3(1.7, 1.9, 1.7))
+	_add_harvestable(root, ItemKind.Kind.BERRIES, 3, 120.0, [berry_a, berry_b])
 	return root
 
 
@@ -140,8 +166,18 @@ func _add_shelter(parent: Node3D, offset: Vector3, size: Vector3) -> void:
 	parent.add_child(area)
 
 
+## Attaches the harvest component. The factory supplies the visuals that vanish when
+## stripped, because it is the only thing that knows each prop's shape.
+func _add_harvestable(parent: Node3D, item: int, amount: int,
+		respawn_seconds: float, visuals: Array) -> void:
+	var component := Harvestable.new()
+	component.name = "Harvestable"
+	component.configure(item, amount, respawn_seconds, visuals)
+	parent.add_child(component)
+
+
 func _add_box(parent: Node3D, offset: Vector3, size: Vector3,
-		colour: Color) -> void:
+		colour: Color) -> MeshInstance3D:
 	var mesh := BoxMesh.new()
 	mesh.size = size
 	var material := StandardMaterial3D.new()
@@ -153,6 +189,7 @@ func _add_box(parent: Node3D, offset: Vector3, size: Vector3,
 	instance.material_override = material
 	instance.position = offset
 	parent.add_child(instance)
+	return instance
 
 
 func _add_collider(parent: Node3D, offset: Vector3, size: Vector3) -> void:

@@ -116,6 +116,10 @@ func _ready() -> void:
 	# on the ground when walking off a 1 m lip rather than launching them.
 	floor_snap_length = 0.6
 
+	var harvester := get_node_or_null(^"Harvester")
+	if harvester != null and harvester.has_method(&"bind"):
+		harvester.bind(self, _camera)
+
 	capture_mouse()
 
 
@@ -142,6 +146,11 @@ func is_swimming() -> bool:
 ## The player's condition. Read by the HUD and the overlay; mutated through eat/damage.
 func stats() -> RefCounted:
 	return _stats
+
+
+## The harvest interaction, so the HUD can show its prompt.
+func harvester() -> Node:
+	return get_node_or_null(^"Harvester")
 
 
 ## What the player is carrying. Harvesting, crafting and the HUD all go through this.

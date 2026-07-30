@@ -35,6 +35,10 @@ func populate(map: RefCounted, seed_value: int) -> Dictionary:
 		# up without re-deriving it.
 		prop.set_meta(&"prop_kind", kind)
 		prop.set_meta(&"prop_yield", PropKind.yield_of(kind))
+		var harvestable := prop.get_node_or_null(^"Harvestable")
+		if harvestable != null:
+			harvestable.depleted.connect(_on_prop_depleted)
+			harvestable.restored.connect(_on_prop_restored)
 		_apply_culling(prop)
 		_counts[kind] = int(_counts.get(kind, 0)) + 1
 
@@ -43,6 +47,19 @@ func populate(map: RefCounted, seed_value: int) -> Dictionary:
 
 func counts() -> Dictionary:
 	return _counts
+
+
+## How many props are currently stripped and regrowing. Cheap because harvestables
+## announce their own state rather than being polled.
+var _depleted_count := 0
+
+
+func depleted_count() -> int:
+	return _depleted_count
+
+
+func status_line() -> String:
+	return "props: %d regrowing" % _depleted_count
 
 
 func stat_lines() -> PackedStringArray:
@@ -55,6 +72,14 @@ func stat_lines() -> PackedStringArray:
 		parts.append("%s %d" % [PropKind.name_of(kind), count])
 	lines.append("props: %d total (%s)" % [total, ", ".join(parts)])
 	return lines
+
+
+func _on_prop_depleted() -> void:
+	_depleted_count += 1
+
+
+func _on_prop_restored() -> void:
+	_depleted_count = maxi(_depleted_count - 1, 0)
 
 
 func _apply_culling(prop: Node3D) -> void:

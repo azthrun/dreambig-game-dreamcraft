@@ -40,12 +40,18 @@ func test_solid_props_are_physics_bodies_with_a_shape() -> void:
 		after_each()
 
 
-func test_bushes_have_no_collision_at_all() -> void:
+func test_bushes_are_reachable_but_do_not_block_the_player() -> void:
+	# A bush needs a body so the harvest ray can find it, but it must not be solid:
+	# being stopped by a berry bush would be annoying rather than realistic. It sits on
+	# the interaction layer, which player movement does not mask against.
 	var prop := _spawn(PropKind.Kind.BERRY_BUSH)
-	assert_false(prop is CollisionObject3D,
-			"a bush should be scenery the player walks through")
-	for child in prop.get_children():
-		assert_false(child is CollisionShape3D, "a bush should have no shape")
+	assert_true(prop is StaticBody3D, "a bush must be hittable by the harvest ray")
+	var body := prop as StaticBody3D
+	assert_eq(body.collision_layer, PropFactory.INTERACTION_LAYER,
+			"a bush must not sit on the world layer")
+	assert_eq(body.collision_layer & PropFactory.WORLD_LAYER, 0,
+			"nothing that blocks movement may share the bush's layer")
+	assert_eq(body.collision_mask, 0, "a bush collides with nothing itself")
 
 
 func test_props_are_built_with_their_base_at_the_origin() -> void:

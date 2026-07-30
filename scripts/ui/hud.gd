@@ -39,6 +39,8 @@ var _fills: Array[ColorRect] = []
 var _labels: Array[Label] = []
 var _temperature: Label
 var _inventory: RefCounted
+var _harvester: Node
+var _prompt: Label
 var _slot_backings: Array[ColorRect] = []
 var _slot_labels: Array[Label] = []
 
@@ -49,6 +51,8 @@ func bind(player: Node, climate: Node = null) -> void:
 	if _player != null and _player.has_method(&"inventory"):
 		_inventory = _player.inventory()
 		_build_hotbar()
+	if _player != null and _player.has_method(&"harvester"):
+		_harvester = _player.harvester()
 
 
 func _ready() -> void:
@@ -84,6 +88,9 @@ func _process(_delta: float) -> void:
 		_temperature.modulate = COLOUR_COLD if cold else COLOUR_WARM
 
 	_refresh_hotbar()
+
+	if _prompt != null and _harvester != null and _harvester.has_method(&"prompt"):
+		_prompt.text = _harvester.prompt()
 
 
 func _set_bar(index: int, fraction: float, value: float) -> void:
@@ -121,6 +128,18 @@ func _build_bars() -> void:
 		label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		add_child(label)
 		_labels.append(label)
+
+	# Centred just above the hotbar, where the eye already is.
+	_prompt = Label.new()
+	_prompt.anchor_left = 0.5
+	_prompt.anchor_right = 0.5
+	_prompt.anchor_top = 1.0
+	_prompt.anchor_bottom = 1.0
+	_prompt.position = Vector2(-140.0, -(MARGIN + SLOT_SIZE + 34.0))
+	_prompt.size = Vector2(280.0, 24.0)
+	_prompt.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_prompt.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_prompt)
 
 	_temperature = Label.new()
 	_temperature.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
