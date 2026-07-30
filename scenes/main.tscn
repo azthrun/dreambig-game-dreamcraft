@@ -4,6 +4,7 @@
 [ext_resource type="Script" path="res://scripts/world/terrain.gd" id="2_terrain"]
 [ext_resource type="PackedScene" path="res://scenes/player.tscn" id="3_player"]
 [ext_resource type="Script" path="res://scripts/world/props.gd" id="4_props"]
+[ext_resource type="Script" path="res://scripts/world/sky.gd" id="5_sky"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_0wfyh"]
 
@@ -22,9 +23,17 @@ script = ExtResource("1_o5qli")
 [node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=106120543]
 environment = SubResource("Environment_jyhfs")
 
-[node name="Sun" type="DirectionalLight3D" parent="." unique_id=569481904]
+[node name="Sky" type="Node3D" parent="."]
+script = ExtResource("5_sky")
+
+[node name="Sun" type="DirectionalLight3D" parent="Sky"]
 transform = Transform3D(0.8660254, 0.35355338, -0.35355338, 0, 0.70710677, 0.70710677, 0.5, -0.6123724, 0.6123724, 0, 0, 0)
 shadow_enabled = true
+
+[node name="Moon" type="DirectionalLight3D" parent="Sky"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0)
+shadow_enabled = false
+light_energy = 0.09
 
 [node name="Terrain" type="Node3D" parent="."]
 script = ExtResource("2_terrain")

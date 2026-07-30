@@ -14,10 +14,21 @@ const SETTLE_FRAMES := 45
 ## Views to capture: a label, a camera offset from the player's spawn, and a pitch.
 ## Ground level shows whether terrain renders at all; the lifted view shows the island
 ## silhouette, where inverted faces are unmistakable.
+## `time` is a normalised time of day applied to the Sky before capturing, so each
+## phase of the cycle can be inspected without waiting twenty minutes for it.
 const VIEWS := [
-	{"name": "ground", "offset": Vector3(0.0, 0.0, 0.0), "pitch_deg": -8.0},
-	{"name": "lifted", "offset": Vector3(0.0, 120.0, 0.0), "pitch_deg": -32.0},
-	{"name": "high", "offset": Vector3(0.0, 420.0, 0.0), "pitch_deg": -55.0},
+	{"name": "ground", "offset": Vector3(0.0, 0.0, 0.0), "pitch_deg": -8.0,
+			"time": 0.30},
+	{"name": "lifted", "offset": Vector3(0.0, 120.0, 0.0), "pitch_deg": -32.0,
+			"time": 0.30},
+	{"name": "dawn", "offset": Vector3(0.0, 6.0, 0.0), "pitch_deg": -2.0,
+			"time": 0.16},
+	{"name": "noon", "offset": Vector3(0.0, 6.0, 0.0), "pitch_deg": -2.0,
+			"time": 0.50},
+	{"name": "dusk", "offset": Vector3(0.0, 6.0, 0.0), "pitch_deg": -2.0,
+			"time": 0.84},
+	{"name": "night", "offset": Vector3(0.0, 6.0, 0.0), "pitch_deg": 12.0,
+			"time": 0.00},
 ]
 
 var _player: Node3D
@@ -50,7 +61,15 @@ func _capture_all() -> void:
 	# actually in frame rather than swallowed by the 500 m budget.
 	var original_far := camera.far
 
+	# Freezing the clock keeps each capture at exactly the intended hour rather than
+	# drifting through it while frames settle.
+	var sky := get_parent().get_node_or_null(^"Sky")
+	if sky != null:
+		sky.paused = true
+
 	for view in VIEWS:
+		if sky != null and view.has("time"):
+			sky.set_time_of_day(float(view["time"]))
 		var offset: Vector3 = view["offset"]
 		_player.global_position = base + offset
 		camera.rotation.x = deg_to_rad(float(view["pitch_deg"]))

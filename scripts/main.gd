@@ -36,11 +36,6 @@ const Config := preload("res://scripts/config.gd")
 const PerfProbe := preload("res://scripts/perf_probe.gd")
 const ScreenshotProbe := preload("res://scripts/screenshot_probe.gd")
 
-## Sky horizon and distance fog share this colour, so terrain fading out at the far
-## plane fades into the sky rather than into a differently-coloured wall. Deriving both
-## from one constant is what stops them drifting apart.
-const HORIZON_COLOUR := Color(0.66, 0.75, 0.84)
-
 ## Height above the terrace the player is dropped from, so they settle onto the
 ## surface under gravity rather than starting embedded in it.
 const SPAWN_CLEARANCE_M := 1.5
@@ -51,6 +46,10 @@ func _ready() -> void:
 	var lines := report_lines(missing)
 
 	_configure_view()
+
+	var sky_node := get_node_or_null(^"Sky")
+	if sky_node != null:
+		lines.append(sky_node.status_line())
 
 	var terrain := get_node_or_null(^"Terrain")
 	if terrain != null:
@@ -97,15 +96,15 @@ func _configure_view() -> void:
 	env.fog_depth_end = view
 	env.fog_depth_curve = 1.0
 	env.fog_density = 1.0
-	env.fog_light_color = HORIZON_COLOUR
+	# Fog colour is not set here: the Sky node drives it from the time of day, so
+	# distant terrain fades into whatever colour the horizon actually is at that hour.
 	# The sky is the thing terrain fades into, so it must not itself be fogged.
 	env.fog_sky_affect = 0.0
 	env.fog_aerial_perspective = 0.0
 
-	if env.sky != null and env.sky.sky_material is ProceduralSkyMaterial:
-		var sky_material: ProceduralSkyMaterial = env.sky.sky_material
-		sky_material.sky_horizon_color = HORIZON_COLOUR
-		sky_material.ground_horizon_color = HORIZON_COLOUR
+	var sky := get_node_or_null(^"Sky")
+	if sky != null:
+		sky.bind_environment(env)
 
 
 func _player_camera() -> Camera3D:
