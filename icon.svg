@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <rect width="128" height="128" fill="#5c8cbf"/>
+  <circle cx="98" cy="30" r="12" fill="#ffe9a8"/>
+  <!-- terraced island silhouette, 1m-step motif -->
+  <g fill="#4a7a3a">
+    <rect x="16" y="80" width="96" height="16"/>
+    <rect x="28" y="68" width="72" height="12"/>
+    <rect x="40" y="56" width="48" height="12"/>
+    <rect x="52" y="44" width="24" height="12"/>
+  </g>
+  <rect x="52" y="44" width="24" height="6" fill="#e8f0f4"/>
+  <rect x="0" y="96" width="128" height="32" fill="#2f6a9a"/>
+</svg>
