@@ -30,8 +30,21 @@ var _peak_draw_calls := 0
 var _done := false
 
 
+## Weather forced while measuring.
+##
+## Measuring in fair weather would flatter the result: the budget has to hold in the
+## worst conditions the game can produce, which is a thunderstorm — volumetric fog,
+## full precipitation and lightning at once.
+const MEASURE_WEATHER := 4  # WeatherModel.State.THUNDERSTORM
+
+
 func start(player: Node3D) -> void:
 	_player = player
+	var weather := get_parent().get_node_or_null(^"Weather")
+	if weather != null:
+		weather.set_state(MEASURE_WEATHER)
+		weather.paused = true
+		print("perf: weather forced to %s (worst case)" % weather.current_name())
 	DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
 	Engine.max_fps = 0
 	if _player != null and _player.has_method(&"release_mouse"):

@@ -29,6 +29,12 @@ const VIEWS := [
 			"time": 0.84},
 	{"name": "night", "offset": Vector3(0.0, 6.0, 0.0), "pitch_deg": 12.0,
 			"time": 0.00},
+	{"name": "rain", "offset": Vector3(0.0, 6.0, 0.0), "pitch_deg": -4.0,
+			"time": 0.42, "weather": 3},
+	{"name": "storm", "offset": Vector3(0.0, 6.0, 0.0), "pitch_deg": -4.0,
+			"time": 0.42, "weather": 4},
+	{"name": "fog", "offset": Vector3(0.0, 6.0, 0.0), "pitch_deg": -4.0,
+			"time": 0.42, "weather": 5},
 ]
 
 var _player: Node3D
@@ -67,15 +73,32 @@ func _capture_all() -> void:
 	if sky != null:
 		sky.paused = true
 
+	# Weather is frozen too, and effects are given time to blend before capture —
+	# otherwise every weather shot catches the transition rather than the condition.
+	var weather := get_parent().get_node_or_null(^"Weather")
+	var effects := get_parent().get_node_or_null(^"WeatherEffects")
+	if weather != null:
+		weather.paused = true
+
 	for view in VIEWS:
 		if sky != null and view.has("time"):
 			sky.set_time_of_day(float(view["time"]))
+		if weather != null:
+			weather.set_state(int(view.get("weather", 0)))
+			# Effects ease towards their target over several seconds, so let the blend
+			# finish rather than photographing it halfway.
+			if effects != null:
+				for _b in 260:
+					effects._process(0.02)
 		var offset: Vector3 = view["offset"]
 		_player.global_position = base + offset
 		camera.rotation.x = deg_to_rad(float(view["pitch_deg"]))
 		camera.far = maxf(original_far, offset.y * 6.0 + 500.0)
 
-		for _i in 6:
+		# Precipitation spawns high above the player and falls, so a capture taken
+		# immediately after switching shows an empty sky. Waiting covers the fall time.
+		var settle: int = 90 if view.has("weather") else 6
+		for _i in settle:
 			await RenderingServer.frame_post_draw
 
 		var image := get_viewport().get_texture().get_image()

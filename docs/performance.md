@@ -84,6 +84,29 @@ The 1% low is reported alongside the average because the average hides stutter, 
 stutter is what a player notices. `meets_target()` gates on the 1% low, not the average,
 so a run that averages well but hitches is correctly reported as failing.
 
+## Measured result — with weather (2026-07-30)
+
+Volumetric fog was flagged above as the next real cost on this hardware, so the probe now
+**forces a thunderstorm while measuring**: volumetric fog, full precipitation and
+lightning at once. Measuring in fair weather would flatter the result, and the budget has
+to hold in the worst conditions the game can produce.
+
+| Run | Average FPS | 1% low FPS | Peak primitives | Draw calls |
+|---|---|---|---|---|
+| 1 | 243.0 | 120.0 | 571,750 | 1082 |
+| 2 | 247.5 | 156.0 | 544,460 | 1076 |
+| 3 | 211.1 | 120.0 | 544,460 | 795 |
+
+**Worst 1% low: 120 FPS, still 2× the 60 FPS target.**
+
+Against the pre-weather baseline (270 FPS 1% low, clear skies), volumetric fog plus 3200
+precipitation particles costs roughly **half the 1% low**. That is the single largest
+cost added so far and it was correctly predicted; it is also affordable.
+
+Headroom is now about 2× rather than the 1.9× measured before weather, which is within
+run-to-run noise — the fog cost is real but the earlier baseline was measured on a
+warmer machine. Treat 120 FPS as the current worst case.
+
 ## Startup cost
 
 Startup is a separate concern from frame rate and is **not** currently within budget in
@@ -121,9 +144,9 @@ An earlier reading of a single best-case run suggested ~5× headroom and made 2 
 look affordable. Five runs show the worst case is ~1.9×, and the worst case is what a
 budget has to be set against. **4 m stays.**
 
-There is also no weather, no creatures, and no HUD in the scene yet — all of which will
-consume headroom that currently looks free. Volumetric fog in particular is a known cost
-on this hardware and is the next thing to land.
+Weather has since landed and been measured under worst-case conditions: it costs about
+half the 1% low, leaving 120 FPS. There are still no creatures and no HUD, both of which
+will consume headroom that currently looks free.
 
 If finer terrain becomes a priority later, the sequence is: thread the meshing off the
 main thread, re-measure with the full scene populated, and only then reconsider cell

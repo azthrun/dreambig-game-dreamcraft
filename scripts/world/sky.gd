@@ -49,6 +49,10 @@ const STAR_TEXTURE_SIZE := 1024
 const STAR_COUNT := 1800
 const STAR_SEED := 8675309
 
+## Weather dimming, applied on top of the time of day. 1.0 is a clear sky.
+var _weather_sun_scale := 1.0
+var _weather_darken := 0.0
+
 var _time := 0.0
 var _sun: DirectionalLight3D
 var _moon: DirectionalLight3D
@@ -60,6 +64,14 @@ func _ready() -> void:
 	_sun = get_node_or_null(^"Sun") as DirectionalLight3D
 	_moon = get_node_or_null(^"Moon") as DirectionalLight3D
 	_time = starting_time
+	_apply()
+
+
+## Applied by the weather effects. Kept separate from the time of day so the two
+## compose: an overcast noon is dim, and an overcast midnight is not somehow brighter.
+func set_weather_attenuation(sun_scale: float, darken: float) -> void:
+	_weather_sun_scale = clampf(sun_scale, 0.0, 1.0)
+	_weather_darken = clampf(darken, 0.0, 1.0)
 	_apply()
 
 
@@ -115,7 +127,7 @@ func _apply() -> void:
 	if _sun != null:
 		_sun.look_at_from_position(
 				Vector3.ZERO, DayNight.sun_direction(_time), Vector3.UP)
-		_sun.light_energy = SUN_ENERGY_MAX * daylight
+		_sun.light_energy = SUN_ENERGY_MAX * daylight * _weather_sun_scale
 		_sun.light_color = SUN_COLOUR_DAY.lerp(SUN_COLOUR_TWILIGHT, twilight)
 		# Shadows off entirely once the sun is down, rather than a shadow from a light
 		# with no energy.
@@ -134,6 +146,14 @@ func _apply() -> void:
 	var horizon := SKY_HORIZON_NIGHT.lerp(SKY_HORIZON_DAY, daylight)
 	top = top.lerp(SKY_TOP_TWILIGHT, twilight)
 	horizon = horizon.lerp(SKY_HORIZON_TWILIGHT, twilight)
+
+	# Cloud cover greys the sky towards overcast rather than merely darkening it, so
+	# an overcast day reads as flat and colourless instead of as dusk.
+	if _weather_darken > 0.0:
+		var grey := Color(0.42, 0.44, 0.47).lerp(Color(0.10, 0.11, 0.13),
+				1.0 - daylight)
+		top = top.lerp(grey, _weather_darken)
+		horizon = horizon.lerp(grey, _weather_darken * 0.8)
 
 	if _sky_material != null:
 		_sky_material.sky_top_color = top
@@ -159,7 +179,8 @@ func _apply() -> void:
 		_environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 		_environment.ambient_light_color = AMBIENT_NIGHT.lerp(AMBIENT_DAY, daylight) \
 				.lerp(AMBIENT_TWILIGHT, twilight)
-		_environment.ambient_light_energy = lerpf(0.35, 1.0, daylight)
+		_environment.ambient_light_energy = lerpf(0.35, 1.0, daylight) \
+				* lerpf(1.0, 0.55, _weather_darken)
 
 
 ## Random points on a dark panorama, used as the sky's cover layer.

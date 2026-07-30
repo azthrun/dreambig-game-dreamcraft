@@ -61,7 +61,7 @@ func _ready() -> void:
 	var label := get_node_or_null(^"UI/BootLabel")
 	if label != null and label.has_method(&"configure"):
 		var sources: Array[Node] = []
-		for path in [^"Sky", ^"Weather"]:
+		for path in [^"Sky", ^"Weather", ^"WeatherEffects"]:
 			var node := get_node_or_null(path)
 			if node != null:
 				sources.append(node)
@@ -108,6 +108,11 @@ func _configure_view() -> void:
 	var sky := get_node_or_null(^"Sky")
 	if sky != null:
 		sky.bind_environment(env)
+
+	var effects := get_node_or_null(^"WeatherEffects")
+	if effects != null:
+		effects.bind(get_node_or_null(^"Weather"), sky, env,
+				get_node_or_null(^"Player") as Node3D)
 
 
 func _player_camera() -> Camera3D:
