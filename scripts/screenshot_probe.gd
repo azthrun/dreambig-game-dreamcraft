@@ -35,6 +35,10 @@ const VIEWS := [
 			"time": 0.42, "weather": 4},
 	{"name": "fog", "offset": Vector3(0.0, 6.0, 0.0), "pitch_deg": -4.0,
 			"time": 0.42, "weather": 5},
+	# On the island's summit, in the same rain condition as the rain shot: the point is
+	# that one global condition produces two different local results.
+	{"name": "snow", "offset": Vector3(0.0, 2.0, 0.0), "pitch_deg": -4.0,
+			"time": 0.42, "weather": 3, "summit": true},
 ]
 
 var _player: Node3D
@@ -62,7 +66,13 @@ func _capture_all() -> void:
 	for _i in SETTLE_FRAMES:
 		await RenderingServer.frame_post_draw
 
+	# Physics off for the duration: the player is teleported between views, and gravity
+	# would drag them back to the ground before the frame is captured — which silently
+	# made an above-the-snowline shot into a ground-level one.
+	_player.set_physics_process(false)
+
 	var base := _player.global_position
+	var summit := _find_summit(base)
 	# Far plane is raised for the lifted views only, so the island silhouette is
 	# actually in frame rather than swallowed by the 500 m budget.
 	var original_far := camera.far
@@ -81,6 +91,13 @@ func _capture_all() -> void:
 		weather.paused = true
 
 	for view in VIEWS:
+		# Move first: local modulation is sampled from where the player is, so blending
+		# before the move would read conditions for the previous position.
+		var offset: Vector3 = view["offset"]
+		var origin: Vector3 = summit if bool(view.get("summit", false)) else base
+		_player.global_position = origin + offset
+		camera.rotation.x = deg_to_rad(float(view["pitch_deg"]))
+
 		if sky != null and view.has("time"):
 			sky.set_time_of_day(float(view["time"]))
 		if weather != null:
@@ -90,9 +107,6 @@ func _capture_all() -> void:
 			if effects != null:
 				for _b in 260:
 					effects._process(0.02)
-		var offset: Vector3 = view["offset"]
-		_player.global_position = base + offset
-		camera.rotation.x = deg_to_rad(float(view["pitch_deg"]))
 		camera.far = maxf(original_far, offset.y * 6.0 + 500.0)
 
 		# Precipitation spawns high above the player and falls, so a capture taken
@@ -112,4 +126,33 @@ func _capture_all() -> void:
 					image.get_width(), image.get_height()])
 
 	camera.far = original_far
+	_player.set_physics_process(true)
 	get_tree().quit(0)
+
+
+## Highest point on the island, as a world position. Falls back to the given position
+## when there is no terrain to search.
+func _find_summit(fallback: Vector3) -> Vector3:
+	var terrain := get_parent().get_node_or_null(^"Terrain")
+	if terrain == null or not terrain.has_method(&"heightmap"):
+		return fallback
+	var map: RefCounted = terrain.heightmap()
+	if map == null:
+		return fallback
+
+	var best := Vector2i.ZERO
+	var best_height := -9999
+	for cz in map.cells_per_axis:
+		for cx in map.cells_per_axis:
+			var height: int = map.height_at_cell(cx, cz)
+			if height > best_height:
+				best_height = height
+				best = Vector2i(cx, cz)
+
+	var half: float = map.size_m() * 0.5
+	var cell_size: float = map.cell_size_m
+	print("screenshot: summit at cell %s, %dm" % [best, best_height])
+	return Vector3(
+			float(best.x) * cell_size - half + cell_size * 0.5,
+			float(best_height),
+			float(best.y) * cell_size - half + cell_size * 0.5)

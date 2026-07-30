@@ -112,7 +112,8 @@ func _configure_view() -> void:
 	var effects := get_node_or_null(^"WeatherEffects")
 	if effects != null:
 		effects.bind(get_node_or_null(^"Weather"), sky, env,
-				get_node_or_null(^"Player") as Node3D)
+				get_node_or_null(^"Player") as Node3D,
+				get_node_or_null(^"Terrain"))
 
 
 func _player_camera() -> Camera3D:
