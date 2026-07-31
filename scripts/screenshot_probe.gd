@@ -46,6 +46,10 @@ const VIEWS := [
 			"time": 0.35, "weather": 0, "open_inventory": true},
 	{"name": "crafting", "offset": Vector3(0.0, 2.0, 0.0), "pitch_deg": -6.0,
 			"time": 0.35, "weather": 0, "open_crafting": true},
+	# Crouched, so the deer does not bolt before the shutter: crouching cuts detection
+	# from 26m to under 12m, which is the whole point of the mechanic.
+	{"name": "deer", "offset": Vector3(0.0, 0.0, 0.0), "pitch_deg": -4.0,
+			"time": 0.35, "weather": 0, "near_creature": true, "crouch": true},
 	# The M3 loop in one frame: the summit at midnight in a storm, which kills an exposed
 	# player, made survivable by a fire built from gathered wood.
 	# Feet on the ground, not hovering: the placement ray reaches only a few metres
@@ -65,6 +69,9 @@ const SAMPLE_ITEMS := [
 
 var _player: Node3D
 var _output_dir := "user://"
+
+## Set when a view aims at something specific, overriding the view's fixed pitch.
+var _aim_pitch := INF
 
 
 func start(player: Node3D, output_dir: String) -> void:
@@ -122,7 +129,14 @@ func _capture_all() -> void:
 		# before the move would read conditions for the previous position.
 		var offset: Vector3 = view["offset"]
 		var origin: Vector3 = summit if bool(view.get("summit", false)) else base
+		if _player.has_method(&"set_crouching"):
+			_player.set_crouching(bool(view.get("crouch", false)))
+		if bool(view.get("near_creature", false)):
+			origin = _beside_a_creature(origin)
 		_player.global_position = origin + offset
+		if _aim_pitch < INF:
+			camera.rotation.x = _aim_pitch
+		_aim_pitch = INF
 		camera.rotation.x = deg_to_rad(float(view["pitch_deg"]))
 
 		if sky != null and view.has("time"):
@@ -166,6 +180,44 @@ func _capture_all() -> void:
 	camera.far = original_far
 	_player.set_physics_process(true)
 	get_tree().quit(0)
+
+
+## Stands the player a few metres from the first animal on the island, facing it.
+##
+## Animals are scattered across plains and forest while the player spawns on a beach, so
+## without this a capture would almost never contain one.
+func _beside_a_creature(fallback: Vector3) -> Vector3:
+	var creatures := get_parent().get_node_or_null(^"Creatures")
+	if creatures == null or not creatures.has_method(&"creatures"):
+		return fallback
+	var list: Array = creatures.creatures()
+	if list.is_empty():
+		return fallback
+
+	# Prefer an animal standing on open plains. Most deer are in forest, where any shot
+	# is either a tree trunk at eye height or a canopy from above.
+	var target: Node3D = list[0]
+	var terrain := get_parent().get_node_or_null(^"Terrain")
+	if terrain != null and terrain.has_method(&"heightmap"):
+		var map: RefCounted = terrain.heightmap()
+		const Biome := preload("res://scripts/world/biome.gd")
+		for candidate in list:
+			if not is_instance_valid(candidate):
+				continue
+			var at: Vector3 = candidate.global_position
+			if map.biome_at_world(at.x, at.z) == Biome.Kind.PLAINS:
+				target = candidate
+				break
+	var stand := target.global_position + Vector3(0.0, 1.6, 11.0)
+
+	# Aim at the animal rather than using the view's fixed pitch, so it is centred
+	# wherever it has wandered to.
+	var to_target := target.global_position + Vector3(0.0, 0.8, 0.0) - stand
+	_player.rotation.y = atan2(-to_target.x, -to_target.z)
+	_aim_pitch = atan2(to_target.y, Vector2(to_target.x, to_target.z).length())
+
+	print("screenshot: standing beside %s" % target.name)
+	return stand
 
 
 ## Builds a fire just in front of the player, as though they had placed one.

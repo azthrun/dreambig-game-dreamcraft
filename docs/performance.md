@@ -107,6 +107,35 @@ Headroom is now about 2× rather than the 1.9× measured before weather, which i
 run-to-run noise — the fog cost is real but the earlier baseline was measured on a
 warmer machine. Treat 120 FPS as the current worst case.
 
+## Measured result — with creatures (2026-07-30)
+
+60 deer added. Measured under the same forced thunderstorm.
+
+**Before dormancy was implemented**, three runs gave 1% lows of **90.0, 58.7 and 124.5
+FPS** — a 66 FPS spread, with one run *below the 60 FPS target*. Average was a healthy
+160–172 the whole time, which is exactly why the average is not the figure that matters.
+
+The cost was not the creature logic, which already only decides every 0.2 s. It was that
+all 60 `AnimationPlayer`s ticked every frame regardless of distance, and all 60 bodies
+drew at any range. An AnimationPlayer costs CPU every frame whatever it is playing, so
+sixty idle clips across the island is pure waste.
+
+Creatures beyond `ACTIVE_RADIUS_M` now stop animating and stop drawing entirely.
+
+| Run | Average FPS | 1% low FPS |
+|---|---|---|
+| 1 | 143.6 | 137.3 |
+| 2 | 144.9 | 141.6 |
+| 3 | 144.3 | 135.0 |
+
+**Worst 1% low: 135 FPS**, and the spread fell from 66 FPS to 7 FPS. Consistency improved
+far more than the headline number — which is the point, since stutter is what a player
+notices.
+
+Note the average went *down* slightly (160 → 144) while the 1% low went *up* sharply.
+That is the trade being made deliberately: fewer, more even frames beat more frames with
+hitches in them.
+
 ## Startup cost
 
 Startup is a separate concern from frame rate and is **not** currently within budget in
@@ -144,9 +173,10 @@ An earlier reading of a single best-case run suggested ~5× headroom and made 2 
 look affordable. Five runs show the worst case is ~1.9×, and the worst case is what a
 budget has to be set against. **4 m stays.**
 
-Weather has since landed and been measured under worst-case conditions: it costs about
-half the 1% low, leaving 120 FPS. There are still no creatures and no HUD, both of which
-will consume headroom that currently looks free.
+Weather and creatures have since landed and been measured under worst-case conditions.
+The trajectory is worth watching: 1% low was 270 FPS before weather, 120 after it, and 135
+after creatures once dormancy was added. Five more species and the dragon are still to
+come, and each will need the same dormancy treatment rather than being assumed free.
 
 If finer terrain becomes a priority later, the sequence is: thread the meshing off the
 main thread, re-measure with the full scene populated, and only then reconsider cell

@@ -12,6 +12,7 @@
 [ext_resource type="Script" path="res://scripts/world/climate.gd" id="10_climate"]
 [ext_resource type="Script" path="res://scripts/ui/inventory_screen.gd" id="11_inv"]
 [ext_resource type="Script" path="res://scripts/ui/crafting_screen.gd" id="12_craft"]
+[ext_resource type="Script" path="res://scripts/world/creatures.gd" id="13_creatures"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_0wfyh"]
 
@@ -56,6 +57,9 @@ script = ExtResource("2_terrain")
 
 [node name="Props" type="Node3D" parent="."]
 script = ExtResource("4_props")
+
+[node name="Creatures" type="Node3D" parent="."]
+script = ExtResource("13_creatures")
 
 [node name="Player" parent="." instance=ExtResource("3_player")]
 

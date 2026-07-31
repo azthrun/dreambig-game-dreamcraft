@@ -1,0 +1,217 @@
+extends CharacterBody3D
+## A creature in the world: steers where its brain says, over the terrain it stands on.
+##
+## Ground height comes from an O(1) heightmap lookup rather than a raycast, and there is
+## no navmesh anywhere. That is the whole reason SPEC could delete navmesh baking: the
+## generator already owns the heights, so asking "how high is it here" costs an array
+## index.
+##
+## Decisions and obstacle checks run on an interval rather than every frame, and animals
+## far from the player do not think at all. With dozens on the island, per-frame cost has
+## to stay proportional to what the player can actually see.
+
+const CreatureKind := preload("res://scripts/creatures/creature_kind.gd")
+const CreatureFactory := preload("res://scripts/creatures/creature_factory.gd")
+const PreyBrain := preload("res://scripts/creatures/prey_brain.gd")
+
+## Steepest step a creature will climb. Matches the player's own limit, so terrain that
+## reads as a cliff is a cliff for everything.
+const MAX_CLIMB_M := 1.05
+
+## How often a creature re-decides and re-checks for obstacles.
+const DECISION_INTERVAL := 0.2
+
+## Beyond this from the player, a creature stops thinking entirely.
+const ACTIVE_RADIUS_M := 130.0
+
+## Movement below this in a decision window counts as no progress, which is what tells the
+## brain it is wedged.
+const PROGRESS_EPSILON_M := 0.25
+
+## How fast a creature turns to face where it is going, in radians per second.
+const TURN_RATE := 6.0
+
+## Collision layer for creatures, kept off the world layer so they do not block the
+## player's own movement or catch the harvest ray.
+const CREATURE_LAYER := 8
+
+var kind := CreatureKind.Kind.DEER
+
+var _map: RefCounted
+var _player: Node3D
+var _brain: RefCounted
+var _animator: AnimationPlayer
+
+var _decision_countdown := 0.0
+var _last_decision_position := Vector3.ZERO
+var _made_progress := true
+var _active := true
+var _current_clip := ""
+
+
+func configure(p_kind: int, map: RefCounted, player: Node3D,
+		seed_value: int) -> void:
+	kind = p_kind
+	_map = map
+	_player = player
+	_brain = PreyBrain.new(seed_value)
+
+	collision_layer = CREATURE_LAYER
+	# Collides with nothing: movement is driven from the heightmap, and letting animals
+	# push the player around would be worse than letting them overlap.
+	collision_mask = 0
+
+	var factory: RefCounted = CreatureFactory.new()
+	_animator = factory.build(self, kind)
+
+	var shape := CapsuleShape3D.new()
+	var body: Dictionary = CreatureKind.body(kind)
+	shape.radius = float(body.get("width", 0.7)) * 0.6
+	shape.height = float(body.get("height", 1.4))
+	var collider := CollisionShape3D.new()
+	collider.shape = shape
+	collider.position.y = shape.height * 0.5
+	add_child(collider)
+
+	_last_decision_position = global_position
+	# Dormant until the first decision proves the player is close enough to care.
+	_active = false
+	_set_simulated(false)
+
+
+func brain() -> RefCounted:
+	return _brain
+
+
+func is_active() -> bool:
+	return _active
+
+
+func state_name() -> String:
+	return _brain.state_name() if _brain != null else "idle"
+
+
+func _physics_process(delta: float) -> void:
+	if _brain == null or _map == null:
+		return
+
+	_decision_countdown -= delta
+	if _decision_countdown <= 0.0:
+		_decision_countdown = DECISION_INTERVAL
+		_decide()
+
+	if not _active:
+		return
+
+	_move(delta)
+
+
+## Re-decides. Only reached on the decision interval, so everything here is off the
+## per-frame path.
+func _decide() -> void:
+	var to_player := INF
+	if _player != null and is_instance_valid(_player):
+		to_player = global_position.distance_to(_player.global_position)
+
+	var was_active := _active
+	_active = to_player <= ACTIVE_RADIUS_M
+	if _active != was_active:
+		_set_simulated(_active)
+	if not _active:
+		return
+
+	# Progress is measured between decisions rather than between frames: a creature
+	# pressed against a rock still jitters frame to frame, but covers no ground.
+	var travelled := global_position.distance_to(_last_decision_position)
+	_made_progress = travelled >= PROGRESS_EPSILON_M
+	_last_decision_position = global_position
+
+	var crouching := false
+	if _player != null and _player.has_method(&"is_crouching"):
+		crouching = _player.is_crouching()
+
+	_brain.tick(DECISION_INTERVAL, {
+		"position": global_position,
+		"threat_position": _player.global_position if _player != null \
+				else Vector3.ZERO,
+		"threat_present": _player != null and is_instance_valid(_player),
+		"threat_crouching": crouching,
+		"detection_m": CreatureKind.detection_m(kind),
+		"made_progress": _made_progress,
+	})
+
+
+## Switches a creature between simulated and dormant.
+##
+## An AnimationPlayer costs CPU every frame whatever it is playing, so sixty of them
+## ticking idle clips across the island is pure waste — stopping them outright is worth
+## far more than switching the clip. Meshes are hidden at the same distance, since a
+## creature too far away to think is also too far away to make out.
+func _set_simulated(simulated: bool) -> void:
+	if _animator != null:
+		if simulated:
+			_current_clip = ""
+			_play(CreatureFactory.CLIP_IDLE)
+		else:
+			_animator.stop()
+			_current_clip = ""
+	for child in get_children():
+		if child is MeshInstance3D:
+			(child as MeshInstance3D).visible = simulated
+		elif child is Node3D:
+			# Leg pivots hold the leg meshes.
+			for leg in (child as Node3D).get_children():
+				if leg is MeshInstance3D:
+					(leg as MeshInstance3D).visible = simulated
+
+
+func _move(delta: float) -> void:
+	var direction: Vector3 = _brain.desired_direction()
+	if direction.length_squared() < 0.0001:
+		_play(CreatureFactory.CLIP_IDLE)
+		_settle()
+		return
+
+	var speed := CreatureKind.run_speed(kind) if _brain.is_fleeing() \
+			else CreatureKind.walk_speed(kind)
+	_play(CreatureFactory.CLIP_RUN if _brain.is_fleeing() \
+			else CreatureFactory.CLIP_WALK)
+
+	var step := direction * speed * delta
+	var target := global_position + step
+
+	# Refuse anything the creature could not climb. Terrain is quantized, so this is a
+	# comparison of two integers rather than a slope calculation.
+	var here: int = _map.height_at_world(global_position.x, global_position.z)
+	var there: int = _map.height_at_world(target.x, target.z)
+	if absi(there - here) > int(ceil(MAX_CLIMB_M)):
+		return
+
+	# Off the island entirely, or into the sea.
+	if there <= 0:
+		return
+
+	global_position.x = target.x
+	global_position.z = target.z
+	_settle()
+	_face(direction, delta)
+
+
+## Plants the creature on the terrain. The O(1) lookup that replaces navmesh and raycasts
+## both.
+func _settle() -> void:
+	global_position.y = float(
+			_map.height_at_world(global_position.x, global_position.z))
+
+
+func _face(direction: Vector3, delta: float) -> void:
+	var wanted := atan2(direction.x, direction.z)
+	rotation.y = rotate_toward(rotation.y, wanted, TURN_RATE * delta)
+
+
+func _play(clip: String) -> void:
+	if _animator == null or clip == _current_clip:
+		return
+	_current_clip = clip
+	if _animator.has_animation(clip):
+		_animator.play(clip)

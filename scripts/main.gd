@@ -64,7 +64,7 @@ func _ready() -> void:
 	if label != null and label.has_method(&"configure"):
 		var sources: Array[Node] = []
 		for path in [^"Sky", ^"Weather", ^"WeatherEffects", ^"Climate", ^"Props",
-				^"Player"]:
+				^"Creatures", ^"Player"]:
 			var node := get_node_or_null(path)
 			if node != null:
 				sources.append(node)
@@ -198,6 +198,11 @@ func _place_player(terrain: Node) -> String:
 	var placer: Node = player.item_placer()
 	if placer != null and placer.has_method(&"bind"):
 		placer.bind(player, _player_camera(), get_node_or_null(^"Props"), climate)
+
+	# Animals need the player to react to, so they are spawned after the player exists.
+	var creatures := get_node_or_null(^"Creatures")
+	if creatures != null:
+		creatures.populate(map, player, terrain.world_seed)
 
 	var hud := get_node_or_null(^"UI/Hud")
 	if hud != null and hud.has_method(&"bind"):
