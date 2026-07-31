@@ -13,6 +13,7 @@ extends CharacterBody3D
 const CreatureKind := preload("res://scripts/creatures/creature_kind.gd")
 const CreatureFactory := preload("res://scripts/creatures/creature_factory.gd")
 const PreyBrain := preload("res://scripts/creatures/prey_brain.gd")
+const Corpse := preload("res://scripts/creatures/corpse.gd")
 
 ## Steepest step a creature will climb. Matches the player's own limit, so terrain that
 ## reads as a cliff is a cliff for everything.
@@ -35,7 +36,17 @@ const TURN_RATE := 6.0
 ## player's own movement or catch the harvest ray.
 const CREATURE_LAYER := 8
 
+signal died(kind: int, at: Vector3)
+
+## How long a struck animal flashes, and what it flashes to.
+const HIT_FLASH_SECONDS := 0.18
+const HIT_FLASH_COLOUR := Color(1.0, 0.42, 0.38)
+
 var kind := CreatureKind.Kind.DEER
+
+var _health := 0.0
+var _flash_countdown := 0.0
+var _meshes: Array[MeshInstance3D] = []
 
 var _map: RefCounted
 var _player: Node3D
@@ -73,6 +84,9 @@ func configure(p_kind: int, map: RefCounted, player: Node3D,
 	collider.position.y = shape.height * 0.5
 	add_child(collider)
 
+	_health = CreatureKind.health(kind)
+	_collect_meshes()
+
 	_last_decision_position = global_position
 	# Dormant until the first decision proves the player is close enough to care.
 	_active = false
@@ -81,6 +95,77 @@ func configure(p_kind: int, map: RefCounted, player: Node3D,
 
 func brain() -> RefCounted:
 	return _brain
+
+
+func health() -> float:
+	return _health
+
+
+func is_dead() -> bool:
+	return _health <= 0.0
+
+
+## Wounds the creature. Being hit also panics it, so a struck animal runs whether or not
+## it had noticed the player.
+func take_damage(amount: float) -> void:
+	if amount <= 0.0 or is_dead():
+		return
+	_health = maxf(_health - amount, 0.0)
+	_flash_countdown = HIT_FLASH_SECONDS
+	_apply_flash(true)
+
+	if _brain != null and _player != null:
+		# Woken and running, even from behind and even if dormant a moment ago.
+		_active = true
+		_set_simulated(true)
+		_brain.tick(DECISION_INTERVAL, {
+			"position": global_position,
+			"threat_position": _player.global_position,
+			"threat_present": true,
+			"threat_crouching": false,
+			## Struck animals always notice, whatever the range.
+			"detection_m": 100000.0,
+			"made_progress": true,
+		})
+
+	if is_dead():
+		_die()
+
+
+func _die() -> void:
+	died.emit(kind, global_position)
+	var corpse: Node3D = Corpse.new()
+	# Parented to the creature's parent, so the corpse outlives the animal.
+	get_parent().add_child(corpse)
+	corpse.global_position = global_position
+	corpse.rotation.y = rotation.y
+	corpse.configure(kind)
+	queue_free()
+
+
+func _collect_meshes() -> void:
+	_meshes.clear()
+	for child in get_children():
+		if child is MeshInstance3D:
+			_meshes.append(child)
+		elif child is Node3D:
+			for leg in (child as Node3D).get_children():
+				if leg is MeshInstance3D:
+					_meshes.append(leg)
+
+
+func _apply_flash(on: bool) -> void:
+	for mesh in _meshes:
+		if is_instance_valid(mesh):
+			# MeshInstance3D has no tint of its own, so the flash goes through the
+			# material's emission. Each box gets its own material from the factory, so
+			# this cannot leak between creatures.
+			var material := mesh.material_override
+			if material is StandardMaterial3D:
+				(material as StandardMaterial3D).emission_enabled = on
+				(material as StandardMaterial3D).emission = HIT_FLASH_COLOUR
+				(material as StandardMaterial3D).emission_energy_multiplier = \
+						1.4 if on else 0.0
 
 
 func is_active() -> bool:
@@ -94,6 +179,11 @@ func state_name() -> String:
 func _physics_process(delta: float) -> void:
 	if _brain == null or _map == null:
 		return
+
+	if _flash_countdown > 0.0:
+		_flash_countdown -= delta
+		if _flash_countdown <= 0.0:
+			_apply_flash(false)
 
 	_decision_countdown -= delta
 	if _decision_countdown <= 0.0:

@@ -13,9 +13,9 @@ signal prompt_changed(text: String)
 const REACH_M := 3.6
 const HOLD_SECONDS := 0.9
 
-## World layer plus the interaction layer, so the ray finds both solid props and the
-## non-solid ones the player can walk through.
-const HARVEST_MASK := 1 | 4
+## World layer, the interaction layer, and the creature layer: props to harvest and
+## corpses to loot are the same verb, so they are the same ray.
+const HARVEST_MASK := 1 | 4 | 8
 
 ## Re-aimed this often rather than every frame. The prop under the crosshair cannot
 ## change faster than this at walking speed, and it keeps a raycast off the hot path.
@@ -58,7 +58,7 @@ func _physics_process(delta: float) -> void:
 		_aim_countdown = AIM_INTERVAL
 		_acquire_target()
 
-	if _target == null or not _target.can_harvest():
+	if _target == null or not _can_take():
 		_reset_progress()
 		_set_prompt("")
 		return
@@ -83,6 +83,10 @@ func _physics_process(delta: float) -> void:
 
 
 func _complete() -> void:
+	if _is_corpse():
+		_loot_corpse()
+		return
+
 	var yielded: int = _target.harvest()
 	_reset_progress()
 	if yielded <= 0:
@@ -96,14 +100,56 @@ func _complete() -> void:
 		_set_prompt("+%d %s" % [taken, ItemKind.name_of(_target.item)])
 
 
+## A corpse hands over several different items at once, so what was taken is summarised
+## rather than named singly.
+func _loot_corpse() -> void:
+	var before: int = _target.remaining_count()
+	var taken: Dictionary = _target.loot(_inventory)
+	_reset_progress()
+
+	if taken.is_empty():
+		_set_prompt("no room")
+		return
+
+	var parts := PackedStringArray()
+	for item in taken:
+		parts.append("%d %s" % [int(taken[item]), ItemKind.name_of(item)])
+	var left: int = _target.remaining_count()
+	if left > 0:
+		_set_prompt("+%s, %d left" % [", ".join(parts), left])
+	else:
+		_set_prompt("+%s" % ", ".join(parts))
+
+
+func _is_corpse() -> bool:
+	return _target != null and _target.has_method(&"loot")
+
+
+## Both kinds of target answer "is there anything here to take".
+func _can_take() -> bool:
+	if _target == null:
+		return false
+	if _is_corpse():
+		return _target.can_loot()
+	return _target.can_harvest()
+
+
 func _has_room() -> bool:
 	if _inventory == null or _target == null:
 		return false
-	return _inventory.room_for(_target.item) > 0
+	return _inventory.room_for(_target_item()) > 0
+
+
+## What this target offers next, whichever kind it is.
+func _target_item() -> int:
+	if _is_corpse():
+		return _target.headline_item()
+	return _target.item
 
 
 func _ready_prompt() -> String:
-	return "hold E: %s" % ItemKind.name_of(_target.item)
+	var verb := "loot" if _is_corpse() else "harvest"
+	return "hold E to %s: %s" % [verb, ItemKind.name_of(_target_item())]
 
 
 func _reset_progress() -> void:
@@ -139,5 +185,10 @@ func _acquire_target() -> void:
 		return
 
 	var collider: Object = hit.get("collider")
-	if collider is Node:
-		_target = (collider as Node).get_node_or_null(^"Harvestable")
+	if collider is not Node:
+		return
+	# Props carry a Harvestable, corpses carry a Lootable. Either satisfies the same
+	# hold-to-take interaction, so neither needs its own key or its own code path.
+	_target = (collider as Node).get_node_or_null(^"Harvestable")
+	if _target == null:
+		_target = (collider as Node).get_node_or_null(^"Lootable")

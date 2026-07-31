@@ -116,9 +116,10 @@ func _ready() -> void:
 	# on the ground when walking off a 1 m lip rather than launching them.
 	floor_snap_length = 0.6
 
-	var harvester := get_node_or_null(^"Harvester")
-	if harvester != null and harvester.has_method(&"bind"):
-		harvester.bind(self, _camera)
+	for component_path in [^"Harvester", ^"Melee"]:
+		var component := get_node_or_null(component_path)
+		if component != null and component.has_method(&"bind"):
+			component.bind(self, _camera)
 
 	capture_mouse()
 

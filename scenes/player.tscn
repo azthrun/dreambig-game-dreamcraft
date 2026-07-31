@@ -3,6 +3,7 @@
 [ext_resource type="Script" path="res://scripts/player/player.gd" id="1_player"]
 [ext_resource type="Script" path="res://scripts/player/harvester.gd" id="2_harvest"]
 [ext_resource type="Script" path="res://scripts/player/item_placer.gd" id="3_placer"]
+[ext_resource type="Script" path="res://scripts/player/melee.gd" id="4_melee"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_player"]
 radius = 0.4
@@ -23,3 +24,6 @@ script = ExtResource("2_harvest")
 
 [node name="ItemPlacer" type="Node3D" parent="."]
 script = ExtResource("3_placer")
+
+[node name="Melee" type="Node3D" parent="."]
+script = ExtResource("4_melee")

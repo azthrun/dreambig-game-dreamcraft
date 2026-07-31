@@ -45,7 +45,13 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if _inventory == null:
 		return
-	use_held_item()
+	# One primary action: use what is in hand, and swing it if it is not something that
+	# gets used. Eating, placing and attacking never compete for the same click.
+	if use_held_item():
+		return
+	var melee := get_parent().get_node_or_null(^"Melee")
+	if melee != null and melee.has_method(&"swing"):
+		melee.swing()
 
 
 ## Acts on the held item. Returns whether anything happened, so callers and tests do not
