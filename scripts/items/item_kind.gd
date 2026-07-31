@@ -19,6 +19,7 @@ enum Kind {
 	STONE_TOOL,
 	CAMPFIRE,
 	HIDE_ARMOUR,
+	BURNT_MEAT,
 }
 
 ## Damage dealt swinging nothing at all. Enough to kill a deer eventually, so the game is
@@ -34,14 +35,24 @@ const ITEMS := {
 	Kind.BERRIES: {"name": "berries", "stack": 16, "nutrition": 6.0},
 	## Deliberately poor food: berries keep you alive until you can hunt, and are not
 	## meant to be a substitute for it.
-	Kind.RAW_MEAT: {"name": "raw meat", "stack": 8, "nutrition": 10.0},
+	## Edible, but it costs you: raw meat is what you eat when the alternative is
+	## starving, not a substitute for building a fire.
+	Kind.RAW_MEAT: {
+		"name": "raw meat", "stack": 8, "nutrition": 10.0, "health_cost": 9.0,
+	},
 	Kind.COOKED_MEAT: {"name": "cooked meat", "stack": 8, "nutrition": 34.0},
 	Kind.HIDE: {"name": "hide", "stack": 8, "nutrition": 0.0},
 	Kind.STONE_TOOL: {
 		"name": "stone tool", "stack": 1, "nutrition": 0.0, "damage": 13.0,
 	},
 	Kind.CAMPFIRE: {"name": "campfire", "stack": 4, "nutrition": 0.0},
-	Kind.HIDE_ARMOUR: {"name": "hide armour", "stack": 1, "nutrition": 0.0},
+	## Worn rather than carried. Insulation is degrees added to the temperature model, so
+	## armour is a third answer to cold alongside shelter and fire.
+	Kind.HIDE_ARMOUR: {
+		"name": "hide armour", "stack": 1, "nutrition": 0.0, "insulation": 5.0,
+	},
+	## What happens when meat is left on the fire. Still edible, barely.
+	Kind.BURNT_MEAT: {"name": "burnt meat", "stack": 8, "nutrition": 3.0},
 }
 
 const ALL: Array[int] = [
@@ -54,6 +65,7 @@ const ALL: Array[int] = [
 	Kind.STONE_TOOL,
 	Kind.CAMPFIRE,
 	Kind.HIDE_ARMOUR,
+	Kind.BURNT_MEAT,
 ]
 
 
@@ -86,6 +98,22 @@ static func is_food(item: int) -> bool:
 static func melee_damage(item: int) -> float:
 	var entry: Dictionary = ITEMS.get(item, {})
 	return float(entry.get("damage", BARE_HAND_DAMAGE))
+
+
+## Health lost from eating this, if any. Raw meat is the only thing that costs anything.
+static func health_cost(item: int) -> float:
+	var entry: Dictionary = ITEMS.get(item, {})
+	return float(entry.get("health_cost", 0.0))
+
+
+## Degrees of warmth this adds while worn. Zero means it is not armour.
+static func insulation(item: int) -> float:
+	var entry: Dictionary = ITEMS.get(item, {})
+	return float(entry.get("insulation", 0.0))
+
+
+static func is_wearable(item: int) -> bool:
+	return insulation(item) > 0.0
 
 
 ## Whether the item is a better weapon than bare hands.

@@ -92,6 +92,10 @@ var _inventory: RefCounted = Inventory.new()
 ## the state and expose the player to weather they are plainly standing out of.
 var _shelter_count := 0
 
+## What is being worn. Armour is worn rather than carried, so it keeps working while the
+## hotbar holds something else.
+var _worn := ItemKind.Kind.NONE
+
 var _jump_velocity: float = sqrt(2.0 * GRAVITY * JUMP_HEIGHT_M)
 var _crouching := false
 
@@ -176,12 +180,42 @@ func eat_selected() -> bool:
 	# before heading somewhere dangerous, which is worse than the waste.
 	if _stats.eat(ItemKind.nutrition(item)) <= 0.0:
 		return false
+	# Raw meat feeds you and makes you ill. The cost is what makes a fire worth building
+	# rather than an optional flourish.
+	var cost := ItemKind.health_cost(item)
+	if cost > 0.0:
+		_stats.damage(cost)
 	_inventory.remove_from_slot(_inventory.selected_slot(), 1)
 	return true
 
 
+## Degrees of warmth from what the player is wearing. Read by the climate.
+func insulation_c() -> float:
+	return ItemKind.insulation(_worn)
+
+
+func worn_item() -> int:
+	return _worn
+
+
+## Wears the held item if it is armour. Returns whether anything changed, so the caller
+## can report rather than failing silently.
+func wear_selected() -> bool:
+	var item: int = _inventory.selected_item()
+	if not ItemKind.is_wearable(item) or item == _worn:
+		return false
+	# The old garment comes back to the pack rather than vanishing.
+	if _worn != ItemKind.Kind.NONE:
+		_inventory.add(_worn, 1)
+	_inventory.remove_from_slot(_inventory.selected_slot(), 1)
+	_worn = item
+	return true
+
+
 func status_line() -> String:
-	return "%s\n%s" % [_stats.status_line(), _inventory.status_line()]
+	var worn := "" if _worn == ItemKind.Kind.NONE \
+			else " | wearing: %s" % ItemKind.name_of(_worn)
+	return "%s\n%s%s" % [_stats.status_line(), _inventory.status_line(), worn]
 
 
 ## Returns the player to the shore with their condition reset. Progress is kept; only

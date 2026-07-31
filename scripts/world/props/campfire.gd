@@ -10,6 +10,8 @@ extends Node3D
 
 const TemperatureModel := preload("res://scripts/world/temperature_model.gd")
 const ProceduralAudio := preload("res://scripts/audio/procedural_audio.gd")
+const ItemKind := preload("res://scripts/items/item_kind.gd")
+const Lootable := preload("res://scripts/creatures/lootable.gd")
 
 signal went_out
 
@@ -26,12 +28,27 @@ const INITIAL_FUEL_SECONDS := 180.0
 const FUEL_PER_WOOD_SECONDS := 90.0
 const MAX_FUEL_SECONDS := 600.0
 
+## How long meat takes to cook, and how long after that before it is ruined.
+##
+## The burn window is generous: losing a kill because you looked away is a worse feeling
+## than a fire that forgives you.
+const COOK_SECONDS := 22.0
+const BURN_SECONDS := 45.0
+
+## Interaction layer, matching the props: the same hold-to-take ray finds a fire's
+## cooking rack as finds a berry bush.
+const INTERACTION_LAYER := 4
+
 ## Steeper than this and a fire cannot be placed: it would sit half-buried in a terrace
 ## face. Matches the player's own walkable limit.
 const MAX_GROUND_SLOPE_DEGREES := 40.0
 
 var _fuel := 0.0
 var _burning := false
+
+var _cooking := 0
+var _cook_elapsed := 0.0
+var _rack: Node
 
 var _light: OmniLight3D
 var _flames: GPUParticles3D
@@ -57,6 +74,40 @@ func _ready() -> void:
 
 func is_burning() -> bool:
 	return _burning
+
+
+## Raw meat currently on the fire.
+func cooking_count() -> int:
+	return _cooking
+
+
+func cook_elapsed() -> float:
+	return _cook_elapsed
+
+
+## Whether what is on the fire has cooked, and whether it has gone past saving.
+func is_cooked() -> bool:
+	return _cooking > 0 and _cook_elapsed >= COOK_SECONDS
+
+
+func is_burnt() -> bool:
+	return _cooking > 0 and _cook_elapsed >= BURN_SECONDS
+
+
+## Puts raw meat on the fire. Refused when the fire is out or already busy, so meat is
+## never silently swallowed.
+func add_raw_meat(count: int) -> int:
+	if count <= 0 or not _burning or _cooking > 0:
+		return 0
+	_cooking = count
+	_cook_elapsed = 0.0
+	_refresh_rack()
+	return count
+
+
+## What is on the rack right now, ready to be taken.
+func rack() -> Node:
+	return _rack
 
 
 func fuel_remaining() -> float:
@@ -100,6 +151,16 @@ func _origin() -> Vector3:
 func tick(delta: float) -> void:
 	if not _burning or delta <= 0.0:
 		return
+
+	if _cooking > 0:
+		var was_cooked := is_cooked()
+		var was_burnt := is_burnt()
+		_cook_elapsed += delta
+		# The rack only changes hands at the two thresholds, so it is not rebuilt every
+		# frame for a fire nobody is standing at.
+		if is_cooked() != was_cooked or is_burnt() != was_burnt:
+			_refresh_rack()
+
 	_fuel = maxf(_fuel - delta, 0.0)
 	if _fuel <= 0.0:
 		_burning = false
@@ -121,7 +182,10 @@ func _apply_state() -> void:
 		_light.visible = _burning
 	if _flames != null:
 		_flames.emitting = _burning
-	if _audio != null:
+	# Audio only plays once the fire is actually in the world. A campfire can be built
+	# and asked about before it is parented — tests do exactly that — and playback on a
+	# detached node is an error rather than a no-op.
+	if _audio != null and _audio.is_inside_tree():
 		if _burning and not _audio.playing:
 			_audio.play()
 		elif not _burning and _audio.playing:
@@ -131,7 +195,43 @@ func _apply_state() -> void:
 func status_line() -> String:
 	if not _burning:
 		return "campfire: out"
+	if _cooking > 0:
+		var what := "burnt" if is_burnt() else ("cooked" if is_cooked() else "cooking")
+		return "campfire: %s x%d %s, %.0fs fuel" % [what, _cooking, _what_next(), _fuel]
 	return "campfire: burning, %.0fs left" % _fuel
+
+
+func _what_next() -> String:
+	if is_burnt():
+		return ""
+	if is_cooked():
+		return "(burns in %.0fs)" % (BURN_SECONDS - _cook_elapsed)
+	return "(%.0fs)" % (COOK_SECONDS - _cook_elapsed)
+
+
+## Keeps the rack's contents matching what is actually on the fire.
+##
+## Reuses the corpse's Lootable so taking food off a fire is the same verb, and the same
+## code, as looting a kill.
+func _refresh_rack() -> void:
+	if _rack == null:
+		return
+	if _cooking <= 0:
+		_rack.configure({})
+		return
+	if is_burnt():
+		_rack.configure({ItemKind.Kind.BURNT_MEAT: _cooking})
+	elif is_cooked():
+		_rack.configure({ItemKind.Kind.COOKED_MEAT: _cooking})
+	else:
+		# Still cooking: nothing to take yet, but the raw meat is not lost either.
+		_rack.configure({})
+
+
+## Called by the rack once the player has taken what was on it.
+func _on_rack_emptied() -> void:
+	_cooking = 0
+	_cook_elapsed = 0.0
 
 
 func _build() -> void:
@@ -172,6 +272,28 @@ func _build() -> void:
 	_flames.visibility_aabb = AABB(
 			Vector3(-1.0, -0.5, -1.0), Vector3(2.0, 3.0, 2.0))
 	add_child(_flames)
+
+	# A body on the interaction layer, so the harvest ray can find the fire to take food
+	# off it. Not on the world layer: walking through a campfire is better than being
+	# stopped by one.
+	var interaction := StaticBody3D.new()
+	interaction.name = "Interaction"
+	interaction.collision_layer = INTERACTION_LAYER
+	interaction.collision_mask = 0
+	var collider := CollisionShape3D.new()
+	var box := BoxShape3D.new()
+	# Reaches eye height, for the same reason corpses and bushes do.
+	box.size = Vector3(1.8, 2.4, 1.8)
+	collider.shape = box
+	collider.position.y = 1.2
+	interaction.add_child(collider)
+	add_child(interaction)
+
+	_rack = Lootable.new()
+	_rack.name = "Lootable"
+	_rack.configure({})
+	_rack.looted.connect(_on_rack_emptied)
+	interaction.add_child(_rack)
 
 	_audio = AudioStreamPlayer3D.new()
 	_audio.name = "FireAudio"

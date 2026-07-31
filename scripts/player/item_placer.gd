@@ -62,6 +62,16 @@ func use_held_item() -> bool:
 	if item == ItemKind.Kind.WOOD and _feed_nearby_fire():
 		return true
 
+	if item == ItemKind.Kind.RAW_MEAT and _cook_on_nearby_fire():
+		return true
+
+	if ItemKind.is_wearable(item):
+		if _player.wear_selected():
+			message.emit("wearing %s" % ItemKind.name_of(item))
+			return true
+		message.emit("already wearing that")
+		return false
+
 	if ItemKind.is_food(item):
 		if _player.eat_selected():
 			message.emit("ate %s" % ItemKind.name_of(item))
@@ -73,6 +83,28 @@ func use_held_item() -> bool:
 		return _place_campfire()
 
 	return false
+
+
+## Puts raw meat on a fire the player is standing beside.
+func _cook_on_nearby_fire() -> bool:
+	var nearest := _nearest_fire(REFUEL_REACH_M)
+	if nearest == null:
+		return false
+	if not nearest.is_burning():
+		message.emit("the fire is out")
+		return false
+	if nearest.cooking_count() > 0:
+		message.emit("something is already cooking")
+		return false
+
+	var slot: int = _inventory.selected_slot()
+	var have: int = _inventory.count_in_slot(slot)
+	var accepted: int = nearest.add_raw_meat(have)
+	if accepted <= 0:
+		return false
+	_inventory.remove_from_slot(slot, accepted)
+	message.emit("cooking %d meat" % accepted)
+	return true
 
 
 ## Adds a log to a fire the player is standing near, rather than placing a second one.

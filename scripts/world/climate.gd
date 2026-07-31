@@ -96,9 +96,13 @@ func _sample() -> float:
 	if _player.has_method(&"is_sheltered"):
 		sheltered = _player.is_sheltered()
 
+	var insulation := 0.0
+	if _player.has_method(&"insulation_c"):
+		insulation = _player.insulation_c()
+
 	return TemperatureModel.temperature_c(
 			biome, altitude, time_of_day, weather_state, sheltered,
-			heat_at(position))
+			heat_at(position), insulation)
 
 
 ## Total warmth from every registered source at a position. Sources that have been freed
