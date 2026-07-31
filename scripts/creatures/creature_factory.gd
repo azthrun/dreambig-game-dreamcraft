@@ -46,6 +46,22 @@ func build(parent: Node3D, kind: int) -> AnimationPlayer:
 	_box(parent, Vector3(0.0, head_y, -length * 0.42),
 			Vector3(width * 0.55, width * 0.55, length * 0.34), head_colour)
 
+	# Spots break up the torso so a tan predator is not mistaken for a tan deer at a
+	# glance, which matters when one of them can kill you.
+	if bool(shape.get("spots", false)):
+		var spot_colour: Color = shape.get("spot_colour", body_colour.darkened(0.5))
+		var rng := RandomNumberGenerator.new()
+		# Fixed seed: every leopard wears the same coat, which is cheaper than storing
+		# one per animal and no player will ever compare two.
+		rng.seed = 4242
+		for _i in 9:
+			var along := rng.randf_range(-0.38, 0.38) * length
+			var around := rng.randf_range(-0.3, 0.3) * (height - leg_length)
+			_box(parent, Vector3(width * 0.51, torso_y + around, along),
+					Vector3(0.02, 0.16, 0.22), spot_colour)
+			_box(parent, Vector3(-width * 0.51, torso_y + around, along),
+					Vector3(0.02, 0.16, 0.22), spot_colour)
+
 	var legs: Array[Node3D] = []
 	var offsets := [
 		Vector3(width * 0.32, leg_length, -length * 0.32),

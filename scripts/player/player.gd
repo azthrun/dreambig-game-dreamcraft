@@ -144,6 +144,12 @@ func is_crouching() -> bool:
 	return _crouching
 
 
+## Exposed because predators notice a sprinting player from further away. Crouching hides
+## you, running advertises you.
+func is_sprinting() -> bool:
+	return _is_sprinting()
+
+
 func is_swimming() -> bool:
 	return _swimming
 

@@ -13,6 +13,7 @@ extends CharacterBody3D
 const CreatureKind := preload("res://scripts/creatures/creature_kind.gd")
 const CreatureFactory := preload("res://scripts/creatures/creature_factory.gd")
 const PreyBrain := preload("res://scripts/creatures/prey_brain.gd")
+const PredatorBrain := preload("res://scripts/creatures/predator_brain.gd")
 const Corpse := preload("res://scripts/creatures/corpse.gd")
 
 ## Steepest step a creature will climb. Matches the player's own limit, so terrain that
@@ -45,6 +46,10 @@ const HIT_FLASH_COLOUR := Color(1.0, 0.42, 0.38)
 var kind := CreatureKind.Kind.DEER
 
 var _health := 0.0
+## Where a predator patrols around. Prey wander freely, so this is only read by
+## predators, but every body carries it rather than branching on species.
+var _anchor := Vector3.ZERO
+var _attack_countdown := 0.0
 var _flash_countdown := 0.0
 var _meshes: Array[MeshInstance3D] = []
 
@@ -65,7 +70,10 @@ func configure(p_kind: int, map: RefCounted, player: Node3D,
 	kind = p_kind
 	_map = map
 	_player = player
-	_brain = PreyBrain.new(seed_value)
+	# Role picks the brain, not species, so the next four animals need no new wiring.
+	_brain = PredatorBrain.new(seed_value) if CreatureKind.is_predator(p_kind) \
+			else PreyBrain.new(seed_value)
+	_anchor = global_position
 
 	collision_layer = CREATURE_LAYER
 	# Collides with nothing: movement is driven from the heightmap, and letting animals
@@ -99,6 +107,10 @@ func brain() -> RefCounted:
 
 func health() -> float:
 	return _health
+
+
+func health_fraction() -> float:
+	return _health / maxf(CreatureKind.health(kind), 0.001)
 
 
 func is_dead() -> bool:
@@ -193,7 +205,28 @@ func _physics_process(delta: float) -> void:
 	if not _active:
 		return
 
+	_update_attack(delta)
 	_move(delta)
+
+
+## Strikes the player while the brain says it is in range, on this species' own cadence.
+##
+## The cooldown lives here rather than in the brain, so a slower or faster animal is a
+## number in the species table rather than a second brain.
+func _update_attack(delta: float) -> void:
+	if _attack_countdown > 0.0:
+		_attack_countdown -= delta
+
+	if not _brain.has_method(&"is_attacking") or not _brain.is_attacking():
+		return
+	if _attack_countdown > 0.0 or _player == null or not is_instance_valid(_player):
+		return
+
+	_attack_countdown = CreatureKind.attack_interval(kind)
+	if _player.has_method(&"stats"):
+		var stats: RefCounted = _player.stats()
+		if stats != null and not stats.is_dead():
+			stats.damage(CreatureKind.attack_damage(kind))
 
 
 ## Re-decides. Only reached on the decision interval, so everything here is off the
@@ -220,13 +253,20 @@ func _decide() -> void:
 	if _player != null and _player.has_method(&"is_crouching"):
 		crouching = _player.is_crouching()
 
+	var sprinting := false
+	if _player != null and _player.has_method(&"is_sprinting"):
+		sprinting = _player.is_sprinting()
+
 	_brain.tick(DECISION_INTERVAL, {
 		"position": global_position,
+		"anchor": _anchor,
 		"threat_position": _player.global_position if _player != null \
 				else Vector3.ZERO,
 		"threat_present": _player != null and is_instance_valid(_player),
 		"threat_crouching": crouching,
+		"threat_sprinting": sprinting,
 		"detection_m": CreatureKind.detection_m(kind),
+		"health_fraction": health_fraction(),
 		"made_progress": _made_progress,
 	})
 
@@ -262,10 +302,15 @@ func _move(delta: float) -> void:
 		_settle()
 		return
 
-	var speed := CreatureKind.run_speed(kind) if _brain.is_fleeing() \
-			else CreatureKind.walk_speed(kind)
-	_play(CreatureFactory.CLIP_RUN if _brain.is_fleeing() \
-			else CreatureFactory.CLIP_WALK)
+	# Prey run when they flee; predators run when they charge or break off. Both answer
+	# the same two questions, so the body does not branch on species.
+	var running: bool = _brain.is_running() if _brain.has_method(&"is_running") \
+			else _brain.is_fleeing()
+	var scale: float = _brain.speed_scale() if _brain.has_method(&"speed_scale") \
+			else 1.0
+	var speed := (CreatureKind.run_speed(kind) if running \
+			else CreatureKind.walk_speed(kind)) * scale
+	_play(CreatureFactory.CLIP_RUN if running else CreatureFactory.CLIP_WALK)
 
 	var step := direction * speed * delta
 	var target := global_position + step

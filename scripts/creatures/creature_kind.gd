@@ -42,9 +42,34 @@ const SPECIES := {
 			Biome.Kind.FOREST: 0.7,
 		},
 	},
+	Kind.LEOPARD: {
+		"name": "leopard",
+		"role": Role.PREDATOR,
+		## Roughly two stone-tool hits more than a deer: a real fight without a stalemate.
+		"health": 55.0,
+		"walk_speed": 2.6,
+		"run_speed": 9.6,
+		## Sees further than a deer notices you, so it finds you before you find it.
+		"detection_m": 30.0,
+		"attack_damage": 14.0,
+		"attack_interval": 1.3,
+		"body": {
+			"height": 1.05, "length": 1.9, "width": 0.66,
+			"body_colour": Color(0.78, 0.62, 0.30),
+			"head_colour": Color(0.72, 0.56, 0.26),
+			"leg_colour": Color(0.62, 0.48, 0.22),
+			## Spots are what make it read as a leopard rather than a tan deer.
+			"spots": true,
+			"spot_colour": Color(0.20, 0.15, 0.10),
+		},
+		"drops": {ItemKind.Kind.RAW_MEAT: 3, ItemKind.Kind.HIDE: 2},
+		"biomes": {
+			Biome.Kind.FOREST: 1.0,
+		},
+	},
 }
 
-const ALL: Array[int] = [Kind.DEER]
+const ALL: Array[int] = [Kind.DEER, Kind.LEOPARD]
 
 
 static func data(kind: int) -> Dictionary:
@@ -73,6 +98,20 @@ static func run_speed(kind: int) -> float:
 
 static func detection_m(kind: int) -> float:
 	return float(data(kind).get("detection_m", 20.0))
+
+
+## Damage one strike does, and how long between strikes. Prey have neither, which is
+## what makes them prey.
+static func attack_damage(kind: int) -> float:
+	return float(data(kind).get("attack_damage", 0.0))
+
+
+static func attack_interval(kind: int) -> float:
+	return float(data(kind).get("attack_interval", 1.5))
+
+
+static func is_predator(kind: int) -> bool:
+	return role(kind) == Role.PREDATOR
 
 
 static func body(kind: int) -> Dictionary:

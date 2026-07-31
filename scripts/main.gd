@@ -42,6 +42,9 @@ const ScreenshotProbe := preload("res://scripts/screenshot_probe.gd")
 ## surface under gravity rather than starting embedded in it.
 const SPAWN_CLEARANCE_M := 1.5
 
+## Collected while placing the player, since creatures are spawned in that pass.
+var _creature_lines := PackedStringArray()
+
 
 func _ready() -> void:
 	var missing := missing_actions()
@@ -54,6 +57,7 @@ func _ready() -> void:
 		lines.append_array(terrain.stat_lines())
 		lines.append_array(_populate_props(terrain))
 		lines.append(_place_player(terrain))
+		lines.append_array(_creature_lines)
 
 	for line in lines:
 		print(line)
@@ -203,6 +207,7 @@ func _place_player(terrain: Node) -> String:
 	var creatures := get_node_or_null(^"Creatures")
 	if creatures != null:
 		creatures.populate(map, player, terrain.world_seed)
+		_creature_lines = creatures.stat_lines()
 
 	var hud := get_node_or_null(^"UI/Hud")
 	if hud != null and hud.has_method(&"bind"):

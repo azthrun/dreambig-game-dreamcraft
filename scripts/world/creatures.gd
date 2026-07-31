@@ -58,6 +58,20 @@ func creatures() -> Array[Node3D]:
 	return _creatures
 
 
+## One-off summary for the boot report, so what actually spawned is visible in a
+## headless run rather than only in the live overlay.
+func stat_lines() -> PackedStringArray:
+	var parts := PackedStringArray()
+	var total := 0
+	for kind in CreatureKind.ALL:
+		var count := int(_counts.get(kind, 0))
+		total += count
+		parts.append("%s %d" % [CreatureKind.name_of(kind), count])
+	var lines := PackedStringArray()
+	lines.append("creatures: %d total (%s)" % [total, ", ".join(parts)])
+	return lines
+
+
 func status_line() -> String:
 	var active := 0
 	for creature in _creatures:
