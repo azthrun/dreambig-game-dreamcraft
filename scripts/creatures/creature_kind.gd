@@ -20,6 +20,10 @@ enum Kind {
 ## so a new prey animal needs no new behaviour.
 enum Role { PREY, PREDATOR }
 
+## Coat pattern. Three cats of similar shape have to be told apart at a distance, and
+## the pattern is what does it once the silhouette is too small to judge.
+enum Marking { NONE, SPOTS, STRIPES }
+
 const SPECIES := {
 	Kind.DEER: {
 		"name": "deer",
@@ -41,6 +45,16 @@ const SPECIES := {
 			Biome.Kind.PLAINS: 1.0,
 			Biome.Kind.FOREST: 0.7,
 		},
+		## Most of the island's animals: prey has to be the common sight, or the
+		## predators have nothing to hunt and the player nothing to eat. Deliberately
+		## below the total, so filling the plains with deer cannot crowd the cats out
+		## of the places that are left.
+		"max_population": 40,
+		## Light and quick: a short, fast stride with plenty of swing.
+		"gait": {
+			"walk_swing": 24.0, "run_swing": 46.0,
+			"walk_cycle": 0.82, "run_cycle": 0.38,
+		},
 	},
 	Kind.LEOPARD: {
 		"name": "leopard",
@@ -59,17 +73,96 @@ const SPECIES := {
 			"head_colour": Color(0.72, 0.56, 0.26),
 			"leg_colour": Color(0.62, 0.48, 0.22),
 			## Spots are what make it read as a leopard rather than a tan deer.
-			"spots": true,
-			"spot_colour": Color(0.20, 0.15, 0.10),
+			"markings": Marking.SPOTS,
+			"marking_colour": Color(0.20, 0.15, 0.10),
 		},
 		"drops": {ItemKind.Kind.RAW_MEAT: 3, ItemKind.Kind.HIDE: 2},
 		"biomes": {
 			Biome.Kind.FOREST: 1.0,
 		},
+		## The one predator the player is expected to meet early, so it is the least
+		## rare of the three cats.
+		"max_population": 12,
+		"gait": {
+			"walk_swing": 22.0, "run_swing": 42.0,
+			"walk_cycle": 0.9, "run_cycle": 0.42,
+		},
+	},
+	Kind.TIGER: {
+		"name": "tiger",
+		"role": Role.PREDATOR,
+		## Half again the leopard's, so a fight that was winnable with a stone tool is
+		## not winnable with the same kit.
+		"health": 85.0,
+		"walk_speed": 2.8,
+		"run_speed": 10.0,
+		"detection_m": 34.0,
+		"attack_damage": 20.0,
+		"attack_interval": 1.25,
+		"body": {
+			## Visibly bigger than a leopard from across a clearing, which is the only
+			## warning the player gets before it is in charge range.
+			"height": 1.3, "length": 2.3, "width": 0.82,
+			"body_colour": Color(0.86, 0.44, 0.11),
+			"head_colour": Color(0.80, 0.40, 0.10),
+			"leg_colour": Color(0.70, 0.34, 0.08),
+			"markings": Marking.STRIPES,
+			"marking_colour": Color(0.10, 0.07, 0.05),
+		},
+		"drops": {ItemKind.Kind.RAW_MEAT: 4, ItemKind.Kind.HIDE: 3},
+		## Forest first, but it climbs — which is what puts a predator on the way to
+		## the mountains rather than only in the trees.
+		"biomes": {
+			Biome.Kind.FOREST: 0.55,
+			Biome.Kind.MOUNTAINS: 0.8,
+		},
+		"max_population": 7,
+		## Heavier than a leopard: a longer, shallower stride.
+		"gait": {
+			"walk_swing": 19.0, "run_swing": 37.0,
+			"walk_cycle": 1.02, "run_cycle": 0.5,
+		},
+	},
+	Kind.LION: {
+		"name": "lion",
+		"role": Role.PREDATOR,
+		## The top of the ground roster. Bare hands are not a plan against this.
+		"health": 120.0,
+		"walk_speed": 3.0,
+		"run_speed": 10.4,
+		"detection_m": 38.0,
+		"attack_damage": 26.0,
+		"attack_interval": 1.2,
+		"body": {
+			"height": 1.4, "length": 2.45, "width": 0.9,
+			## Pale sand rather than the leopard's gold: the first colours tried were
+			## close enough to each other that only the spots told them apart.
+			"body_colour": Color(0.87, 0.75, 0.53),
+			"head_colour": Color(0.83, 0.71, 0.49),
+			"leg_colour": Color(0.75, 0.63, 0.43),
+			## No coat pattern at all: tan, and the mane does the identifying.
+			"markings": Marking.NONE,
+			"mane": true,
+			"mane_colour": Color(0.33, 0.20, 0.09),
+		},
+		"drops": {ItemKind.Kind.RAW_MEAT: 5, ItemKind.Kind.HIDE: 3},
+		## Open ground, where the deer are — and where there is nothing to hide behind.
+		"biomes": {
+			Biome.Kind.PLAINS: 0.35,
+			Biome.Kind.MOUNTAINS: 0.4,
+		},
+		## The rarest of the three: meeting one should be an event.
+		"max_population": 4,
+		## Heaviest tread of the three.
+		"gait": {
+			"walk_swing": 17.0, "run_swing": 33.0,
+			"walk_cycle": 1.12, "run_cycle": 0.56,
+		},
 	},
 }
 
-const ALL: Array[int] = [Kind.DEER, Kind.LEOPARD]
+## Order matters only for reporting; spawn weighting reads the table, not this list.
+const ALL: Array[int] = [Kind.DEER, Kind.LEOPARD, Kind.TIGER, Kind.LION]
 
 
 static func data(kind: int) -> Dictionary:
@@ -120,6 +213,30 @@ static func body(kind: int) -> Dictionary:
 
 static func drops(kind: int) -> Dictionary:
 	return data(kind).get("drops", {})
+
+
+## Coat pattern, from the body description. Read by the factory only.
+static func markings(kind: int) -> int:
+	return int(body(kind).get("markings", Marking.NONE))
+
+
+static func has_mane(kind: int) -> bool:
+	return bool(body(kind).get("mane", false))
+
+
+## Swing angles and cycle times for this species' walk and run clips. A heavier animal
+## takes a longer, shallower stride, which is what stops three cats sharing one gait.
+static func gait(kind: int) -> Dictionary:
+	return data(kind).get("gait", {})
+
+
+## Most of this species the island will ever hold at once.
+##
+## Per species rather than only in total, because a total cap alone would let a bad roll
+## fill the island with lions. Zero — the default for a species that has not declared one
+## — means it never spawns.
+static func max_population(kind: int) -> int:
+	return int(data(kind).get("max_population", 0))
 
 
 ## Relative likelihood of this species spawning in a biome. Zero means never.

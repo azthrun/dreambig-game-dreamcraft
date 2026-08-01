@@ -6,8 +6,8 @@ extends RefCounted
 ## proportions. Legs hang from pivot nodes so a rotation swings the whole limb, which is
 ## all the animation a cuboid animal needs.
 ##
-## Species differ by proportion and colour only, so the next four animals reuse this
-## whole file.
+## Species differ by proportion, colour, coat pattern and gait — all of them entries in
+## the species table — so the remaining animals reuse this whole file.
 
 const CreatureKind := preload("res://scripts/creatures/creature_kind.gd")
 
@@ -17,7 +17,8 @@ const CLIP_IDLE := "idle"
 const CLIP_WALK := "walk"
 const CLIP_RUN := "run"
 
-## How far the legs swing, in degrees, and how fast each gait plays.
+## How far the legs swing, in degrees, and how fast each gait plays. Fallbacks: a species
+## states its own in the table, so a heavy cat does not walk like a deer.
 const WALK_SWING_DEGREES := 22.0
 const RUN_SWING_DEGREES := 42.0
 const WALK_CYCLE_SECONDS := 0.9
@@ -46,21 +47,23 @@ func build(parent: Node3D, kind: int) -> AnimationPlayer:
 	_box(parent, Vector3(0.0, head_y, -length * 0.42),
 			Vector3(width * 0.55, width * 0.55, length * 0.34), head_colour)
 
-	# Spots break up the torso so a tan predator is not mistaken for a tan deer at a
-	# glance, which matters when one of them can kill you.
-	if bool(shape.get("spots", false)):
-		var spot_colour: Color = shape.get("spot_colour", body_colour.darkened(0.5))
-		var rng := RandomNumberGenerator.new()
-		# Fixed seed: every leopard wears the same coat, which is cheaper than storing
-		# one per animal and no player will ever compare two.
-		rng.seed = 4242
-		for _i in 9:
-			var along := rng.randf_range(-0.38, 0.38) * length
-			var around := rng.randf_range(-0.3, 0.3) * (height - leg_length)
-			_box(parent, Vector3(width * 0.51, torso_y + around, along),
-					Vector3(0.02, 0.16, 0.22), spot_colour)
-			_box(parent, Vector3(-width * 0.51, torso_y + around, along),
-					Vector3(0.02, 0.16, 0.22), spot_colour)
+	# The coat pattern breaks up the torso so a tan predator is not mistaken for a tan
+	# deer at a glance, which matters when one of them can kill you. Three cats of
+	# similar shape need it against each other too.
+	var torso_height := height - leg_length
+	var marking_colour: Color = shape.get("marking_colour", body_colour.darkened(0.5))
+	match int(shape.get("markings", CreatureKind.Marking.NONE)):
+		CreatureKind.Marking.SPOTS:
+			_spots(parent, torso_y, torso_height, length, width, marking_colour)
+		CreatureKind.Marking.STRIPES:
+			_stripes(parent, torso_y, torso_height, length, width, marking_colour)
+
+	# The mane is the lion's whole silhouette at range: a maneless tan cat would read as
+	# a large leopard that had lost its spots.
+	if bool(shape.get("mane", false)):
+		var mane_colour: Color = shape.get("mane_colour", body_colour.darkened(0.55))
+		_box(parent, Vector3(0.0, head_y - torso_height * 0.06, -length * 0.30),
+				Vector3(width * 1.32, torso_height * 1.24, length * 0.2), mane_colour)
 
 	var legs: Array[Node3D] = []
 	var offsets := [
@@ -79,20 +82,68 @@ func build(parent: Node3D, kind: int) -> AnimationPlayer:
 				Vector3(width * 0.24, leg_length, width * 0.24), leg_colour)
 		legs.append(pivot)
 
-	return _build_animations(parent, legs)
+	return _build_animations(parent, legs, CreatureKind.gait(kind))
 
 
-func _build_animations(parent: Node3D, legs: Array[Node3D]) -> AnimationPlayer:
+## Scattered spots, on the flanks and over the back.
+##
+## The back matters as much as the flanks: the first shot of a leopard at eleven metres —
+## inside its charge range — showed a plain tan animal, because the only view of it was
+## from above and behind and every spot was on a side face.
+func _spots(parent: Node3D, torso_y: float, torso_height: float, length: float,
+		width: float, colour: Color) -> void:
+	var rng := RandomNumberGenerator.new()
+	# Fixed seed: every leopard wears the same coat, which is cheaper than storing one
+	# per animal and no player will ever compare two.
+	rng.seed = 4242
+	for _i in 9:
+		var along := rng.randf_range(-0.38, 0.38) * length
+		var around := rng.randf_range(-0.3, 0.3) * torso_height
+		_box(parent, Vector3(width * 0.51, torso_y + around, along),
+				Vector3(0.02, 0.22, 0.28), colour)
+		_box(parent, Vector3(-width * 0.51, torso_y + around, along),
+				Vector3(0.02, 0.22, 0.28), colour)
+	for _i in 7:
+		var along := rng.randf_range(-0.36, 0.36) * length
+		var across := rng.randf_range(-0.3, 0.3) * width
+		_box(parent, Vector3(across, torso_y + torso_height * 0.51, along),
+				Vector3(0.2, 0.02, 0.26), colour)
+
+
+## Bands wrapping the torso, evenly spaced along it.
+##
+## Regular rather than scattered, and over the back as well as the flanks: that is what
+## separates a tiger from a leopard when both are small in the frame, and the back is
+## what the player sees from above on a slope.
+func _stripes(parent: Node3D, torso_y: float, torso_height: float, length: float,
+		width: float, colour: Color) -> void:
+	var count := 6
+	var thickness := length * 0.055
+	for index in count:
+		var t := (float(index) + 0.5) / float(count)
+		var along := lerpf(-0.4, 0.4, t) * length
+		_box(parent, Vector3(width * 0.51, torso_y, along),
+				Vector3(0.02, torso_height * 0.82, thickness), colour)
+		_box(parent, Vector3(-width * 0.51, torso_y, along),
+				Vector3(0.02, torso_height * 0.82, thickness), colour)
+		_box(parent, Vector3(0.0, torso_y + torso_height * 0.51, along),
+				Vector3(width * 0.86, 0.02, thickness), colour)
+
+
+func _build_animations(parent: Node3D, legs: Array[Node3D],
+		gait: Dictionary) -> AnimationPlayer:
 	var player := AnimationPlayer.new()
 	player.name = "AnimationPlayer"
 	parent.add_child(player)
 
 	var library := AnimationLibrary.new()
 	library.add_animation(CLIP_IDLE, _clip(parent, legs, 0.0, 1.0))
-	library.add_animation(CLIP_WALK,
-			_clip(parent, legs, WALK_SWING_DEGREES, WALK_CYCLE_SECONDS))
-	library.add_animation(CLIP_RUN,
-			_clip(parent, legs, RUN_SWING_DEGREES, RUN_CYCLE_SECONDS))
+	library.add_animation(CLIP_WALK, _clip(parent, legs,
+			float(gait.get("walk_swing", WALK_SWING_DEGREES)),
+			float(gait.get("walk_cycle", WALK_CYCLE_SECONDS))))
+	library.add_animation(CLIP_RUN, _clip(parent, legs,
+			float(gait.get("run_swing", RUN_SWING_DEGREES)),
+			float(gait.get("run_cycle", RUN_CYCLE_SECONDS))))
 	player.add_animation_library("", library)
 	return player
 

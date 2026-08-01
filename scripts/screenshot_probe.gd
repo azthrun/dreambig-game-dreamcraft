@@ -49,7 +49,15 @@ const VIEWS := [
 	# Crouched, so the deer does not bolt before the shutter: crouching cuts detection
 	# from 26m to under 12m, which is the whole point of the mechanic.
 	{"name": "deer", "offset": Vector3(0.0, 0.0, 0.0), "pitch_deg": -4.0,
-			"time": 0.35, "weather": 0, "near_creature": true, "crouch": true},
+			"time": 0.35, "weather": 0, "near_creature": "deer", "crouch": true},
+	# One shot per cat, because the three are meant to be told apart on sight and
+	# nothing headless can check whether they actually are.
+	{"name": "leopard", "offset": Vector3(0.0, 0.0, 0.0), "pitch_deg": -4.0,
+			"time": 0.35, "weather": 0, "near_creature": "leopard", "crouch": true},
+	{"name": "tiger", "offset": Vector3(0.0, 0.0, 0.0), "pitch_deg": -4.0,
+			"time": 0.35, "weather": 0, "near_creature": "tiger", "crouch": true},
+	{"name": "lion", "offset": Vector3(0.0, 0.0, 0.0), "pitch_deg": -4.0,
+			"time": 0.35, "weather": 0, "near_creature": "lion", "crouch": true},
 	# The M3 loop in one frame: the summit at midnight in a storm, which kills an exposed
 	# player, made survivable by a fire built from gathered wood.
 	# Feet on the ground, not hovering: the placement ray reaches only a few metres
@@ -131,13 +139,17 @@ func _capture_all() -> void:
 		var origin: Vector3 = summit if bool(view.get("summit", false)) else base
 		if _player.has_method(&"set_crouching"):
 			_player.set_crouching(bool(view.get("crouch", false)))
-		if bool(view.get("near_creature", false)):
-			origin = _beside_a_creature(origin)
+		if view.has("near_creature"):
+			origin = _beside_a_creature(origin, String(view["near_creature"]))
 		_player.global_position = origin + offset
+		# The view's fixed pitch first, then the aim, which overrides it when the shot is
+		# of something in particular. These were the other way round, so every creature
+		# shot was framed by the fixed pitch and the animal was wherever it happened to
+		# be — which is why the deer was a speck.
+		camera.rotation.x = deg_to_rad(float(view["pitch_deg"]))
 		if _aim_pitch < INF:
 			camera.rotation.x = _aim_pitch
 		_aim_pitch = INF
-		camera.rotation.x = deg_to_rad(float(view["pitch_deg"]))
 
 		if sky != null and view.has("time"):
 			sky.set_time_of_day(float(view["time"]))
@@ -164,7 +176,22 @@ func _capture_all() -> void:
 			_light_fire_in_front()
 
 		var settle: int = 90 if view.has("weather") else 6
+		if view.has("near_creature"):
+			# An animal beyond the active radius is not drawn at all, and it only
+			# notices the camera has arrived on its next decision — a fifth of a second
+			# away. Six frames photographed an empty field.
+			settle = maxi(settle, 40)
 		for _i in settle:
+			await RenderingServer.frame_post_draw
+
+		if view.has("near_creature"):
+			# It has been awake and walking for that whole settle, so stand and aim
+			# again rather than photographing where it used to be.
+			_player.global_position = _beside_a_creature(origin,
+					String(view["near_creature"])) + offset
+			if _aim_pitch < INF:
+				camera.rotation.x = _aim_pitch
+			_aim_pitch = INF
 			await RenderingServer.frame_post_draw
 
 		var image := get_viewport().get_texture().get_image()
@@ -182,16 +209,25 @@ func _capture_all() -> void:
 	get_tree().quit(0)
 
 
-## Stands the player a few metres from the first animal on the island, facing it.
+## Stands the player a few metres from an animal of the named species, facing it.
 ##
 ## Animals are scattered across plains and forest while the player spawns on a beach, so
-## without this a capture would almost never contain one.
-func _beside_a_creature(fallback: Vector3) -> Vector3:
+## without this a capture would almost never contain one. The species is named because
+## the point of the cat shots is comparing one against another, and "whichever animal
+## spawned first" would give three pictures of the same deer.
+func _beside_a_creature(fallback: Vector3, species: String) -> Vector3:
 	var creatures := get_parent().get_node_or_null(^"Creatures")
 	if creatures == null or not creatures.has_method(&"creatures"):
 		return fallback
-	var list: Array = creatures.creatures()
+
+	const CreatureKind := preload("res://scripts/creatures/creature_kind.gd")
+	var list: Array = []
+	for candidate in creatures.creatures():
+		if is_instance_valid(candidate) \
+				and CreatureKind.name_of(candidate.kind) == species:
+			list.append(candidate)
 	if list.is_empty():
+		printerr("screenshot: no %s on this island" % species)
 		return fallback
 
 	# Prefer an animal standing on open plains. Most deer are in forest, where any shot
@@ -202,8 +238,6 @@ func _beside_a_creature(fallback: Vector3) -> Vector3:
 		var map: RefCounted = terrain.heightmap()
 		const Biome := preload("res://scripts/world/biome.gd")
 		for candidate in list:
-			if not is_instance_valid(candidate):
-				continue
 			var at: Vector3 = candidate.global_position
 			if map.biome_at_world(at.x, at.z) == Biome.Kind.PLAINS:
 				target = candidate
@@ -216,7 +250,8 @@ func _beside_a_creature(fallback: Vector3) -> Vector3:
 	_player.rotation.y = atan2(-to_target.x, -to_target.z)
 	_aim_pitch = atan2(to_target.y, Vector2(to_target.x, to_target.z).length())
 
-	print("screenshot: standing beside %s" % target.name)
+	print("screenshot: standing beside %s, %.1fm away"
+			% [target.name, stand.distance_to(target.global_position)])
 	return stand
 
 

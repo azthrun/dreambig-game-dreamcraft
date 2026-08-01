@@ -53,6 +53,16 @@ corpses, and campfires in turn. Melee uses a sphere rather than a ray for the sa
 
 Species are data: a new animal is an entry in `creature_kind.gd`, not new code. Role
 (prey/predator) picks the brain, and the body asks both brains the same questions.
+Proportions, colour, coat pattern, gait and spawn weights are all entries in that table.
+
+Two entries are easy to omit and fail quietly. A species with no `max_population`
+**never spawns** — zero is the default, and the island simply comes out without it. A
+species with no `gait` silently borrows the shared fallback and moves like everything
+else, which is exactly what the cuboid style is worst at hiding.
+
+**Markings have to be on the back, not only the flanks.** The player looks *down* at
+animals from higher terrain most of the time. The leopard's spots were side-faces only
+and it read as a plain tan animal at eleven metres — inside its own charge range.
 
 **New creatures must inherit dormancy.** Beyond `ACTIVE_RADIUS_M` a creature stops
 thinking, stops animating and stops drawing. This is not an optimisation to add later:

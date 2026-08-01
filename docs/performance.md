@@ -136,6 +136,27 @@ Note the average went *down* slightly (160 → 144) while the 1% low went *up* s
 That is the trade being made deliberately: fewer, more even frames beat more frames with
 hitches in them.
 
+## Measured result — three cat species (2026-08-01)
+
+The island's 60 animals are now four species rather than two (deer 40, leopard 9, tiger 7,
+lion 4). The total is unchanged, so the question was only whether a striped or maned body
+— a few more box meshes each — costs anything.
+
+It does not. Three runs on the branch and two on the parent commit, interleaved, all read
+**119.2–119.5 FPS average and 120.0 FPS at the 1% low**, with peak primitives within 12 of
+each other (540,398 vs 540,410). The extra marking boxes are on 20 animals, of which at
+most a handful are ever inside the active radius.
+
+**A caution about the day's readings, which is the reusable part.** Earlier the same day,
+six runs gave 1% lows of 52–55 FPS — *below the 60 target*. Three of those runs were on
+this branch and three on the unmodified parent commit, and both read the same, which is
+what identified the machine rather than the change. Later runs settled at exactly 120.0,
+which is a refresh-rate figure rather than a game figure. Neither number is a measurement
+of this change; the comparison between them, taken back to back, is.
+
+Always measure the parent commit in the same sitting. A single set of numbers from a
+machine in an unknown state can be read as a regression that does not exist.
+
 ## Startup cost
 
 Startup is a separate concern from frame rate and is **not** currently within budget in
@@ -175,8 +196,8 @@ budget has to be set against. **4 m stays.**
 
 Weather and creatures have since landed and been measured under worst-case conditions.
 The trajectory is worth watching: 1% low was 270 FPS before weather, 120 after it, and 135
-after creatures once dormancy was added. Five more species and the dragon are still to
-come, and each will need the same dormancy treatment rather than being assumed free.
+after creatures once dormancy was added. The boar and the dragon are still to come, and
+each will need the same dormancy treatment rather than being assumed free.
 
 If finer terrain becomes a priority later, the sequence is: thread the meshing off the
 main thread, re-measure with the full scene populated, and only then reconsider cell

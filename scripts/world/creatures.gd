@@ -7,12 +7,14 @@ extends Node3D
 
 const CreatureKind := preload("res://scripts/creatures/creature_kind.gd")
 const CreatureBody := preload("res://scripts/creatures/creature_body.gd")
+const Population := preload("res://scripts/creatures/population.gd")
 const Heightmap := preload("res://scripts/world/heightmap.gd")
 
 ## Total animals on the island.
 ##
 ## A cap rather than a density: the island is a fixed size, so a number is easier to reason
-## about than a rate, and it puts a hard ceiling on the per-frame cost.
+## about than a rate, and it puts a hard ceiling on the per-frame cost. Per-species caps
+## live in the species table beside the rest of what makes a species itself.
 const POPULATION := 60
 
 ## Attempts before giving up on placing one. Generous, since most cells are ocean.
@@ -31,22 +33,27 @@ func populate(map: RefCounted, player: Node3D, seed_value: int) -> Dictionary:
 	var rng := RandomNumberGenerator.new()
 	# Offset so animal placement does not correlate with terrain or prop noise.
 	rng.seed = seed_value + 5150
+	# Weighting and both kinds of cap live in the pure class, which is where they are
+	# tested; this loop only picks cells and builds bodies.
+	var population: RefCounted = Population.new(seed_value + 5151, POPULATION)
 
 	var attempts := 0
-	while _creatures.size() < POPULATION and attempts < MAX_ATTEMPTS:
+	while not population.is_full() and attempts < MAX_ATTEMPTS:
 		attempts += 1
 		var cx := rng.randi_range(1, map.cells_per_axis - 2)
 		var cz := rng.randi_range(1, map.cells_per_axis - 2)
 		if map.height_at_cell(cx, cz) <= Heightmap.SEA_LEVEL_M:
 			continue
 
-		var kind := _roll_kind(map.biome_at_cell(cx, cz), rng)
+		var kind: int = population.roll(map.biome_at_cell(cx, cz))
 		if kind < 0:
 			continue
 
 		_spawn(kind, map, player, _world_position(map, cx, cz),
 				rng.randi(), rng.randf_range(0.0, TAU))
+		population.record(kind)
 
+	_counts = population.counts()
 	return _counts
 
 
@@ -84,23 +91,6 @@ func status_line() -> String:
 	return "creatures: %s (%d thinking)" % [", ".join(parts), active]
 
 
-## Picks a species for a biome, weighted, or -1 for nothing here.
-func _roll_kind(biome: int, rng: RandomNumberGenerator) -> int:
-	var total := 0.0
-	for kind in CreatureKind.ALL:
-		total += CreatureKind.biome_weight(kind, biome)
-	if total <= 0.0:
-		return -1
-
-	var roll := rng.randf() * total
-	var accumulated := 0.0
-	for kind in CreatureKind.ALL:
-		accumulated += CreatureKind.biome_weight(kind, biome)
-		if roll <= accumulated:
-			return kind
-	return -1
-
-
 func _spawn(kind: int, map: RefCounted, player: Node3D, position: Vector3,
 		seed_value: int, yaw: float) -> void:
 	var creature: Node3D = CreatureBody.new()
@@ -110,7 +100,6 @@ func _spawn(kind: int, map: RefCounted, player: Node3D, position: Vector3,
 	creature.rotation.y = yaw
 	creature.configure(kind, map, player, seed_value)
 	_creatures.append(creature)
-	_counts[kind] = int(_counts.get(kind, 0)) + 1
 
 
 func _world_position(map: RefCounted, cx: int, cz: int) -> Vector3:
