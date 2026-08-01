@@ -30,6 +30,36 @@ The load-bearing rules. Full rationale, including rejected alternatives, is in S
   integer seed.
 - **Input via named input-map actions**, never raw key reads.
 
+### Physics layers
+
+Only four are in use, and mixing them up produces bugs that look like missing features
+rather than errors:
+
+| Layer | Value | Holds | Notes |
+|---|---|---|---|
+| World | 1 | Terrain, tree trunks, rock outcrops, cover props | Blocks player movement |
+| Interaction | 4 | Berry bushes, campfire bodies | Reachable but **not** solid — the player walks through |
+| Creature | 8 | Living creatures, corpses | Collides with nothing; melee and looting rays target this |
+
+Anything the player should be able to *reach* but not be *stopped by* goes on the
+interaction layer. Berry bushes were unharvestable for a whole ticket because they had no
+body at all, and the same class of bug will recur for anything non-solid.
+
+**Interaction volumes reach above eye height.** The player's eye is at 1.65 m. A collider
+that stops at an object's actual height is missed by a level look — this bit berry bushes,
+corpses, and campfires in turn. Melee uses a sphere rather than a ray for the same reason.
+
+### Adding a creature
+
+Species are data: a new animal is an entry in `creature_kind.gd`, not new code. Role
+(prey/predator) picks the brain, and the body asks both brains the same questions.
+
+**New creatures must inherit dormancy.** Beyond `ACTIVE_RADIUS_M` a creature stops
+thinking, stops animating and stops drawing. This is not an optimisation to add later:
+adding 60 deer without it put the 1% low *below* the 60 FPS target while the average still
+read 160+. See `docs/performance.md`. Never assume a new species is free — measure across
+several runs after adding one.
+
 ## Testing
 
 Two seams, deliberately minimised:
@@ -92,6 +122,21 @@ rest of a test.
 Available: `assert_true`, `assert_false`, `assert_eq`, `assert_ne`, `assert_almost_eq` (float epsilon),
 `assert_in_range` (inclusive), `assert_has` / `assert_not_has` (arrays, packed arrays, dictionary keys,
 substrings), and `fail`.
+
+A test that evaluates **zero assertions is reported as a failure**, not a pass. GDScript
+runtime errors cannot be caught, so a test that errors before its first assertion would
+otherwise look green. This guard has caught real errors more than once.
+
+### The most common mistake in this repo
+
+Roughly a third of the failures during development were **the test's premise being wrong,
+not the code**. Recurring examples: asserting starvation after 400 s when hunger takes
+714 s to fill; checking a predator's recovery window while it was still wounded enough to
+retreat anyway; picking a "cold night" scenario that was 6 °C. When a test fails, check
+the scenario actually sets up the situation being asserted before changing the code.
+
+Watch for the inverse too: a test that passes while proving nothing. Both halves of a gate
+need testing — that an exhausted player *cannot* sprint **and** that a rested one *can*.
 
 ## Agent skills
 
