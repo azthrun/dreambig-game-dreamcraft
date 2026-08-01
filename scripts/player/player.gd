@@ -120,10 +120,16 @@ func _ready() -> void:
 	# on the ground when walking off a 1 m lip rather than launching them.
 	floor_snap_length = 0.6
 
-	for component_path in [^"Harvester", ^"Melee"]:
+	for component_path in [^"Harvester", ^"Melee", ^"Firearm"]:
 		var component := get_node_or_null(component_path)
 		if component != null and component.has_method(&"bind"):
 			component.bind(self, _camera)
+
+	# The viewmodel hangs off the camera and only needs to know what is being held.
+	if _camera != null:
+		var viewmodel := _camera.get_node_or_null(^"Viewmodel")
+		if viewmodel != null and viewmodel.has_method(&"bind"):
+			viewmodel.bind(self)
 
 	capture_mouse()
 
@@ -292,6 +298,17 @@ func _handle_hotbar_input(event: InputEvent) -> void:
 			if event.is_action_pressed(StringName("hotbar_%d" % (slot + 1))):
 				_inventory.select(slot)
 				return
+
+
+## Kicks the aim up by `pitch_radians`, or back down for a negative value.
+##
+## Goes through the player rather than the firearm touching the camera directly, because
+## the pitch limit lives here — a burst fired at the sky must not roll the view over.
+func apply_recoil(pitch_radians: float) -> void:
+	if _camera == null:
+		return
+	var limit := deg_to_rad(PITCH_LIMIT_DEGREES)
+	_camera.rotation.x = clampf(_camera.rotation.x + pitch_radians, -limit, limit)
 
 
 func _look(relative: Vector2) -> void:

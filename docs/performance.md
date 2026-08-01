@@ -192,6 +192,26 @@ a **median nearest deer of 101 m**. A hunt would have been something a player es
 never happened to see. At the 75 m scent range, **8 of 20 predators (40%) start with prey
 in range**. Nothing about the danger to the player changed.
 
+## Measured result — caches and the pistol (2026-08-01)
+
+55 supply caches (four boxes each) added to the island's props, plus a first-person
+viewmodel drawn every frame and a raycast per shot. Three interleaved pairs against the
+parent commit:
+
+| Pair | Branch 1% low | Parent 1% low |
+|---|---|---|
+| 1 | 170.4 | 174.3 |
+| 2 | 196.2 | 211.7 |
+| 3 | 193.7 | 137.4 |
+
+Overlapping ranges, no consistent difference. None of this was expected to cost anything
+and none of it does: the viewmodel is four boxes with `no_depth_test`, and a shot is one
+ray on a click rather than anything per frame.
+
+Worth noting for the machine-gun ticket, which is the first thing that will fire on a
+timer rather than on a click: a raycast per shot is free at pistol cadence and should be
+re-measured at 600 rounds per minute, not assumed.
+
 ## Startup cost
 
 Startup is a separate concern from frame rate and is **not** currently within budget in

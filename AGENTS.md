@@ -49,6 +49,21 @@ body at all, and the same class of bug will recur for anything non-solid.
 that stops at an object's actual height is missed by a level look — this bit berry bushes,
 corpses, and campfires in turn. Melee uses a sphere rather than a ray for the same reason.
 
+### Anything the player takes from
+
+There is **one** take-from-the-world interaction: hold `interact`. It finds a child node
+named `Harvestable` (regrows, yields one item) or `Lootable` (yields several, may not
+come back) on whatever the ray hit, and it never learns what kind of object owns it.
+
+Corpses, the cooking rack and supply caches are all `Lootable`. A supply cache is
+literally the corpse's `Lootable` subclassed with a refill. **Adding a new container
+means adding a component with that name, not a key, a prompt, or a refusal path** — if
+you find yourself writing a second "hold E to…" you have taken a wrong turn.
+
+The interaction volume must reach eye height (1.65 m); see the physics-layer note above.
+That is why caches are non-solid: a knee-high crate needs a chest-high collider to be
+findable by a level look, and a solid collider that tall is an invisible wall.
+
 ### Adding a creature
 
 Species are data: a new animal is an entry in `creature_kind.gd`, not new code. Role

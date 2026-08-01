@@ -58,12 +58,27 @@ const VIEWS := [
 			"time": 0.35, "weather": 0, "near_creature": "tiger", "crouch": true},
 	{"name": "lion", "offset": Vector3(0.0, 0.0, 0.0), "pitch_deg": -4.0,
 			"time": 0.35, "weather": 0, "near_creature": "lion", "crouch": true},
+	# A supply cache, closed and then opened. The lid vanishing is the only way a player
+	# can tell a looted crate from a stocked one without walking up to it, and nothing
+	# headless can check that it actually reads that way.
+	{"name": "cache", "offset": Vector3(0.0, 0.0, 0.0), "pitch_deg": -6.0,
+			"time": 0.35, "weather": 0, "near_cache": true},
+	{"name": "cache_looted", "offset": Vector3(0.0, 0.0, 0.0), "pitch_deg": -6.0,
+			"time": 0.35, "weather": 0, "near_cache": true, "loot_cache": true},
 	# The M3 loop in one frame: the summit at midnight in a storm, which kills an exposed
 	# player, made survivable by a fire built from gathered wood.
 	# Feet on the ground, not hovering: the placement ray reaches only a few metres
 	# down, so a player floating above the terrain cannot reach it to build on.
 	{"name": "campfire", "offset": Vector3(0.0, 0.0, 0.0), "pitch_deg": -14.0,
 			"time": 0.00, "weather": 4, "summit": true, "light_fire": true},
+	# The pistol in the player's own hands, aimed at something worth shooting. Last in
+	# the list because arming the player fills hotbar slots, and the campfire shot needs
+	# a free one to put a campfire in.
+	# Beside a deer rather than a cat: a predator that charges the camera ends up behind
+	# it, and the point of the shot is the gun and what it is aimed at.
+	{"name": "pistol", "offset": Vector3(0.0, 0.0, 0.0), "pitch_deg": -4.0,
+			"time": 0.35, "weather": 0, "near_creature": "deer",
+			"crouch": true, "hold_pistol": true},
 ]
 
 ## Sample contents so the hotbar and inventory screen show something. Harvesting does not
@@ -141,6 +156,8 @@ func _capture_all() -> void:
 			_player.set_crouching(bool(view.get("crouch", false)))
 		if view.has("near_creature"):
 			origin = _beside_a_creature(origin, String(view["near_creature"]))
+		if bool(view.get("near_cache", false)):
+			origin = _beside_a_cache(origin, bool(view.get("loot_cache", false)))
 		_player.global_position = origin + offset
 		# The view's fixed pitch first, then the aim, which overrides it when the shot is
 		# of something in particular. These were the other way round, so every creature
@@ -174,6 +191,9 @@ func _capture_all() -> void:
 
 		if bool(view.get("light_fire", false)):
 			_light_fire_in_front()
+
+		if bool(view.get("hold_pistol", false)):
+			_arm_with_pistol()
 
 		var settle: int = 90 if view.has("weather") else 6
 		if view.has("near_creature"):
@@ -252,6 +272,59 @@ func _beside_a_creature(fallback: Vector3, species: String) -> Vector3:
 
 	print("screenshot: standing beside %s, %.1fm away"
 			% [target.name, stand.distance_to(target.global_position)])
+	return stand
+
+
+## Puts a loaded pistol in the player's hands, as though one had been found in a cache.
+func _arm_with_pistol() -> void:
+	if not _player.has_method(&"inventory"):
+		return
+	const ItemKind := preload("res://scripts/items/item_kind.gd")
+	var inventory: RefCounted = _player.inventory()
+	inventory.add(ItemKind.Kind.PISTOL, 1)
+	inventory.add(ItemKind.Kind.PISTOL_AMMO, 7)
+	for slot in 5:
+		if inventory.item_in_slot(slot) == ItemKind.Kind.PISTOL:
+			inventory.select(slot)
+			return
+	printerr("screenshot: no hotbar slot free for the pistol")
+
+
+## Stands the player a few metres from a supply cache, facing it, optionally after
+## emptying it — which is how the looted look gets photographed without walking the
+## player through a nine-hundred-second refill.
+func _beside_a_cache(fallback: Vector3, empty_it: bool) -> Vector3:
+	var props := get_parent().get_node_or_null(^"Props")
+	if props == null or not props.has_method(&"caches"):
+		return fallback
+	var caches: Array = props.caches()
+	if caches.is_empty():
+		printerr("screenshot: no caches on this island")
+		return fallback
+
+	var cache: Node = caches[0]
+	var crate := cache.get_parent() as Node3D
+	if crate == null:
+		return fallback
+
+	if empty_it and _player.has_method(&"inventory"):
+		cache.loot(_player.inventory())
+
+	# Inside the harvester's 3.6 m reach, so the shot also shows the prompt. Whether a
+	# knee-high crate can actually be reached by a level look is exactly the bug that
+	# made berry bushes unharvestable for a whole ticket, and a picture is the only
+	# thing that catches it.
+	#
+	# Feet on the ground, not eye height: the offset here is a player position, and the
+	# camera sits 1.65 m above it. Standing the player at eye height put the camera 3.8 m
+	# from the crate — outside the reach, so the prompt never appeared and the picture
+	# quietly proved nothing.
+	var stand := crate.global_position + Vector3(0.0, 0.0, 3.0)
+	var to_target := crate.global_position + Vector3(0.0, 0.5, 0.0) \
+			- (stand + Vector3(0.0, 1.65, 0.0))
+	_player.rotation.y = atan2(-to_target.x, -to_target.z)
+	_aim_pitch = atan2(to_target.y, Vector2(to_target.x, to_target.z).length())
+	print("screenshot: standing at a cache, looted=%s" % cache.is_looted())
 	return stand
 
 

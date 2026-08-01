@@ -11,6 +11,7 @@ enum Kind {
 	OVERHANG,
 	CAVE_MOUTH,
 	THICKET,
+	CACHE,
 }
 
 ## What harvesting a prop produces. NONE means the prop is not harvestable.
@@ -43,6 +44,7 @@ const ALL: Array[int] = [
 	Kind.OVERHANG,
 	Kind.CAVE_MOUTH,
 	Kind.THICKET,
+	Kind.CACHE,
 ]
 
 
@@ -60,6 +62,8 @@ static func name_of(kind: int) -> String:
 			return "cave_mouth"
 		Kind.THICKET:
 			return "thicket"
+		Kind.CACHE:
+			return "cache"
 	return "unknown"
 
 
@@ -87,10 +91,25 @@ static func yield_name(resource: int) -> String:
 	return "none"
 
 
-## Whether the player is blocked by this prop. Bushes are pushed through; everything
-## else has some solid part.
+## Props the player opens rather than harvests. What is inside comes from a loot table
+## rather than from `yield_of`, because a cache gives several different things at once.
+const CONTAINERS: Array[int] = [
+	Kind.CACHE,
+]
+
+
+## Whether the player is blocked by this prop. Bushes and caches are pushed through;
+## everything else has some solid part.
+##
+## A cache is not solid for the same reason a bush is not: its interaction volume has to
+## reach eye height to be findable by a level look, and a solid volume that tall would be
+## an invisible wall around a knee-high crate.
 static func is_solid(kind: int) -> bool:
-	return kind != Kind.BERRY_BUSH
+	return kind != Kind.BERRY_BUSH and kind != Kind.CACHE
+
+
+static func is_container(kind: int) -> bool:
+	return CONTAINERS.has(kind)
 
 
 ## Whether standing inside this prop shelters the player from the weather.

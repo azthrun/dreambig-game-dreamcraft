@@ -139,3 +139,61 @@ func test_bushes_do_not_block_movement_but_trunks_do() -> void:
 	assert_true(PropKind.is_solid(PropKind.Kind.ROCK_OUTCROP))
 	assert_false(PropKind.is_solid(PropKind.Kind.BERRY_BUSH),
 			"being blocked by a berry bush would be annoying, not realistic")
+
+
+func test_caches_are_scattered_across_the_island_and_stay_rare() -> void:
+	# Rare enough to be worth finding, common enough that exploring pays off at all.
+	var map := _world()
+	var caches := 0
+	var total := 0
+	for placement in _place(map, SEED):
+		total += 1
+		if int(placement["kind"]) == PropKind.Kind.CACHE:
+			caches += 1
+
+	assert_true(caches >= 8, "only %d caches on the whole island" % caches)
+	assert_true(float(caches) / float(total) < 0.02,
+			"%d of %d props were caches, which is not a supply cache"
+					% [caches, total])
+
+
+func test_caches_turn_up_in_more_than_one_biome() -> void:
+	# The reward for exploring has to be somewhere the player was not already going.
+	var map := _world()
+	var biomes := {}
+	for placement in _place(map, SEED):
+		if int(placement["kind"]) != PropKind.Kind.CACHE:
+			continue
+		var cell: Vector2i = placement["cell"]
+		biomes[map.biome_at_cell(cell.x, cell.y)] = true
+	assert_true(biomes.size() >= 3,
+			"caches appeared in only %d biomes" % biomes.size())
+
+
+func test_every_cache_has_its_own_stable_id() -> void:
+	# A save file records the ids of opened crates. Two crates sharing an id would mean
+	# looting one emptied the other; an id that moved would un-loot the island.
+	var map := _world()
+	var seen := {}
+	for placement in _place(map, SEED):
+		if int(placement["kind"]) != PropKind.Kind.CACHE:
+			continue
+		var id := int(placement["id"])
+		assert_not_has(seen, id, "cache id %d was used twice" % id)
+		seen[id] = placement["cell"]
+
+	# And the same island gives the same ids on a second pass.
+	for placement in _place(map, SEED):
+		if int(placement["kind"]) != PropKind.Kind.CACHE:
+			continue
+		assert_eq(seen.get(int(placement["id"])), placement["cell"])
+
+
+func test_a_cache_is_reachable_but_not_a_wall() -> void:
+	# Its interaction volume reaches eye height, which is only safe because the player
+	# walks through it — the berry bush lesson.
+	assert_false(PropKind.is_solid(PropKind.Kind.CACHE))
+	assert_true(PropKind.is_container(PropKind.Kind.CACHE))
+	assert_false(PropKind.is_container(PropKind.Kind.TREE))
+	assert_eq(PropKind.yield_of(PropKind.Kind.CACHE), PropKind.Yield.NONE,
+			"a crate is opened, not harvested")

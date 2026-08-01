@@ -7,11 +7,13 @@ extends Node3D
 const PropPlacer := preload("res://scripts/world/props/prop_placer.gd")
 const PropFactory := preload("res://scripts/world/props/prop_factory.gd")
 const PropKind := preload("res://scripts/world/props/prop_kind.gd")
+const SupplyCache := preload("res://scripts/world/props/supply_cache.gd")
 const Config := preload("res://scripts/config.gd")
 
 
 
 var _counts: Dictionary = {}
+var _caches: Array[Node] = []
 
 
 ## Builds every prop for a world grid. Returns per-kind counts.
@@ -19,6 +21,7 @@ func populate(map: RefCounted, seed_value: int) -> Dictionary:
 	for child in get_children():
 		child.queue_free()
 	_counts = {}
+	_caches.clear()
 
 	var placer: RefCounted = PropPlacer.new()
 	var factory: RefCounted = PropFactory.new()
@@ -35,6 +38,9 @@ func populate(map: RefCounted, seed_value: int) -> Dictionary:
 		# up without re-deriving it.
 		prop.set_meta(&"prop_kind", kind)
 		prop.set_meta(&"prop_yield", PropKind.yield_of(kind))
+		if PropKind.is_container(kind):
+			_add_cache(prop, seed_value, int(placement.get("id", 0)))
+
 		var harvestable := prop.get_node_or_null(^"Harvestable")
 		if harvestable != null:
 			harvestable.depleted.connect(_on_prop_depleted)
@@ -43,6 +49,24 @@ func populate(map: RefCounted, seed_value: int) -> Dictionary:
 		_counts[kind] = int(_counts.get(kind, 0)) + 1
 
 	return _counts
+
+
+## Fills a crate and names the component `Lootable`, which is what the player's existing
+## hold-to-take interaction looks for. A cache needs no new key and no new prompt for the
+## same reason the cooking rack needed none.
+func _add_cache(prop: Node3D, seed_value: int, cache_id: int) -> void:
+	var cache: Node = SupplyCache.new()
+	cache.name = "Lootable"
+	prop.add_child(cache)
+	cache.configure_cache(seed_value, cache_id,
+			prop.get_meta(&"cache_visuals", []))
+	_caches.append(cache)
+
+
+## Every cache on the island. Saving records which of these have been opened, since
+## re-opening a looted crate is the one way ammunition could be farmed.
+func caches() -> Array[Node]:
+	return _caches
 
 
 func counts() -> Dictionary:

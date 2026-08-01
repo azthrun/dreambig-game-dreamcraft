@@ -20,6 +20,9 @@ enum Kind {
 	CAMPFIRE,
 	HIDE_ARMOUR,
 	BURNT_MEAT,
+	PISTOL,
+	PISTOL_AMMO,
+	FUEL,
 }
 
 ## Damage dealt swinging nothing at all. Enough to kill a deer eventually, so the game is
@@ -53,6 +56,30 @@ const ITEMS := {
 	},
 	## What happens when meat is left on the fire. Still edible, barely.
 	Kind.BURNT_MEAT: {"name": "burnt meat", "stack": 8, "nutrition": 3.0},
+	## Found, never crafted. `firearm` carries what firing costs and what a round does;
+	## an item without that entry cannot be fired, which is what keeps the check in one
+	## place rather than at every trigger pull.
+	##
+	## A round does rather more than a stone tool swing and reaches across a clearing,
+	## which is the whole point of finding one — but there is no recipe for the bullets,
+	## so it does not replace hunting with a club.
+	Kind.PISTOL: {
+		"name": "pistol", "stack": 1, "nutrition": 0.0,
+		"firearm": {
+			"ammo": Kind.PISTOL_AMMO,
+			"damage": 34.0,
+			"range_m": 60.0,
+			"interval": 0.45,
+			"recoil_degrees": 2.4,
+		},
+	},
+	## Uncommon in caches and impossible to make. This is the balancing decision the
+	## whole gadget tier rests on: a pistol with unlimited ammunition would make hunger,
+	## warmth, armour and stalking irrelevant the moment it was found.
+	Kind.PISTOL_AMMO: {"name": "pistol ammo", "stack": 24, "nutrition": 0.0},
+	## For the flying suit, which arrives with its own ticket. Found here so the cache
+	## table is the real one rather than one that has to be revisited.
+	Kind.FUEL: {"name": "fuel", "stack": 8, "nutrition": 0.0},
 }
 
 const ALL: Array[int] = [
@@ -66,6 +93,9 @@ const ALL: Array[int] = [
 	Kind.CAMPFIRE,
 	Kind.HIDE_ARMOUR,
 	Kind.BURNT_MEAT,
+	Kind.PISTOL,
+	Kind.PISTOL_AMMO,
+	Kind.FUEL,
 ]
 
 
@@ -119,3 +149,40 @@ static func is_wearable(item: int) -> bool:
 ## Whether the item is a better weapon than bare hands.
 static func is_weapon(item: int) -> bool:
 	return melee_damage(item) > BARE_HAND_DAMAGE
+
+
+## Firearm facts, or `{}` for anything that is not one. One entry decides whether an
+## item can be fired at all, so nothing has to keep a list of guns.
+static func firearm(item: int) -> Dictionary:
+	var entry: Dictionary = ITEMS.get(item, {})
+	return entry.get("firearm", {})
+
+
+static func is_firearm(item: int) -> bool:
+	return not firearm(item).is_empty()
+
+
+## The item a firearm spends when it fires. NONE for anything that is not a firearm,
+## which is also what makes "do I have ammunition" a question with one answer.
+static func ammo_for(item: int) -> int:
+	return int(firearm(item).get("ammo", Kind.NONE))
+
+
+## Damage one round does. Distinct from `melee_damage`, because pistol-whipping a deer
+## is not what the pistol is for.
+static func ranged_damage(item: int) -> float:
+	return float(firearm(item).get("damage", 0.0))
+
+
+static func ranged_reach_m(item: int) -> float:
+	return float(firearm(item).get("range_m", 0.0))
+
+
+static func fire_interval(item: int) -> float:
+	return float(firearm(item).get("interval", 0.5))
+
+
+## How far the barrel kicks up per shot. Recovery is the shooter's problem, which is
+## what makes a second shot cost something.
+static func recoil_degrees(item: int) -> float:
+	return float(firearm(item).get("recoil_degrees", 0.0))

@@ -26,6 +26,11 @@ const COLOUR_LEAVES := Color(0.16, 0.34, 0.18)
 const COLOUR_ROCK := Color(0.46, 0.45, 0.43)
 const COLOUR_BERRY_LEAF := Color(0.28, 0.45, 0.24)
 const COLOUR_BERRY := Color(0.62, 0.16, 0.24)
+## Deliberately not a natural colour. A cache is the one prop the player is hunting for
+## across two kilometres of green, so it reads as manufactured from a long way off.
+const COLOUR_CRATE := Color(0.72, 0.44, 0.12)
+const COLOUR_CRATE_TRIM := Color(0.24, 0.26, 0.30)
+const COLOUR_CRATE_LID := Color(0.86, 0.72, 0.22)
 
 
 ## Builds a prop rooted at its base, so the root can be placed directly on the terrace
@@ -44,6 +49,8 @@ func build(kind: int) -> Node3D:
 			return _build_cave_mouth()
 		PropKind.Kind.THICKET:
 			return _build_thicket()
+		PropKind.Kind.CACHE:
+			return _build_cache()
 	return Node3D.new()
 
 
@@ -150,6 +157,31 @@ func _build_thicket() -> Node3D:
 	_add_box(root, Vector3(0.0, 5.4, 0.0), Vector3(6.4, 2.2, 6.4), COLOUR_LEAVES)
 	# Sheltered space is the gap between the trunks, under the merged canopy.
 	_add_shelter(root, Vector3(0.0, 1.8, 0.0), Vector3(3.4, 3.4, 3.4))
+	return root
+
+
+## A supply crate. On the interaction layer with a collider that reaches eye height,
+## for the same reason the berry bush is: a knee-high box with a knee-high collider is
+## missed by a level look, and the player would have to aim at their own feet to open
+## the one prop the whole exploration loop is built around.
+##
+## The cache component itself is attached by the props node, which is what knows the
+## world seed and the crate's id.
+func _build_cache() -> Node3D:
+	var root := StaticBody3D.new()
+	root.name = "Cache"
+	root.collision_layer = INTERACTION_LAYER
+	root.collision_mask = 0
+	_add_box(root, Vector3(0.0, 0.42, 0.0), Vector3(1.2, 0.84, 0.9), COLOUR_CRATE)
+	# Banding, so it does not read as a plain orange box at fifty metres.
+	_add_box(root, Vector3(0.0, 0.42, 0.0), Vector3(1.24, 0.16, 0.94),
+			COLOUR_CRATE_TRIM)
+	# The lid is what disappears once the crate has been emptied, so a looted cache is
+	# visibly an open crate rather than an identical closed one.
+	var lid := _add_box(root, Vector3(0.0, 0.90, 0.0), Vector3(1.3, 0.12, 1.0),
+			COLOUR_CRATE_LID)
+	_add_collider(root, Vector3(0.0, 1.0, 0.0), Vector3(1.4, 2.0, 1.2))
+	root.set_meta(&"cache_visuals", [lid])
 	return root
 
 

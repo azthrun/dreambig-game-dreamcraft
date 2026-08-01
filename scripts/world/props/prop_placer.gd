@@ -43,6 +43,15 @@ const DENSITY := {
 	PropKind.Kind.THICKET: {
 		Biome.Kind.FOREST: 0.030,
 	},
+	# Supply caches. An order of magnitude rarer than anything else, and spread across
+	# every land biome rather than concentrated: the reward for exploring has to be
+	# somewhere you were not already going.
+	PropKind.Kind.CACHE: {
+		Biome.Kind.PLAINS: 0.0022,
+		Biome.Kind.FOREST: 0.0026,
+		Biome.Kind.MOUNTAINS: 0.0060,
+		Biome.Kind.BEACH: 0.0030,
+	},
 }
 
 ## Overhangs and caves need a slope to sit against, so they are only considered on
@@ -91,6 +100,11 @@ func place(map: RefCounted, seed_value: int) -> Array[Dictionary]:
 			placements.append({
 				"kind": kind,
 				"cell": Vector2i(cx, cz),
+				# Stable identity, derived from the cell rather than from placement
+				# order, so it survives the list being built differently. A save file
+				# records the ids of opened caches, and an id that shifted with an
+				# unrelated density change would un-loot every crate on the island.
+				"id": cz * map.cells_per_axis + cx,
 				"position": position,
 				"yaw": rng.randf_range(0.0, TAU),
 				"scale": rng.randf_range(0.82, 1.28),

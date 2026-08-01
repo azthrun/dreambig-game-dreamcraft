@@ -29,6 +29,10 @@ const COLOUR_SLOT_SELECTED := Color(0.95, 0.85, 0.45, 0.92)
 ## grows rather than a resource that depletes.
 const LABELS := ["health", "food", "stamina"]
 
+## How long a one-off message stays on screen. Long enough to read, short enough that it
+## is gone before the next one matters.
+const NOTICE_SECONDS := 2.4
+
 ## Colour of the temperature readout when the player is losing health to the cold.
 const COLOUR_COLD := Color(0.55, 0.78, 1.0)
 const COLOUR_WARM := Color(1.0, 1.0, 1.0)
@@ -41,6 +45,8 @@ var _temperature: Label
 var _inventory: RefCounted
 var _harvester: Node
 var _prompt: Label
+var _notice: Label
+var _notice_left := 0.0
 var _slot_backings: Array[ColorRect] = []
 var _slot_labels: Array[Label] = []
 
@@ -54,6 +60,17 @@ func bind(player: Node, climate: Node = null) -> void:
 	if _player != null and _player.has_method(&"harvester"):
 		_harvester = _player.harvester()
 
+	# Things that happen once and have to be said: what was eaten, why a fire refused
+	# fuel, that the gun is empty. These were being emitted and displayed nowhere.
+	for path in [^"ItemPlacer", ^"Firearm"]:
+		var component := _player.get_node_or_null(path) if _player != null else null
+		if component == null:
+			continue
+		for signal_name in [&"message", &"refused"]:
+			if component.has_signal(signal_name) \
+					and not component.is_connected(signal_name, show_notice):
+				component.connect(signal_name, show_notice)
+
 
 func _ready() -> void:
 	# The container spans the viewport so its bottom edge is the screen's bottom; the
@@ -64,7 +81,24 @@ func _ready() -> void:
 	_build_bars()
 
 
-func _process(_delta: float) -> void:
+## Shows a one-off message under the crosshair.
+func show_notice(text: String) -> void:
+	if _notice == null:
+		return
+	_notice.text = text
+	_notice_left = NOTICE_SECONDS
+
+
+func notice_text() -> String:
+	return _notice.text if _notice != null else ""
+
+
+func _process(delta: float) -> void:
+	if _notice != null and _notice_left > 0.0:
+		_notice_left -= delta
+		if _notice_left <= 0.0:
+			_notice.text = ""
+
 	if _player == null or not _player.has_method(&"stats"):
 		return
 	var stats: RefCounted = _player.stats()
@@ -140,6 +174,18 @@ func _build_bars() -> void:
 	_prompt.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_prompt.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_prompt)
+
+	# Just above the prompt, so a refusal and an offer never overwrite each other.
+	_notice = Label.new()
+	_notice.anchor_left = 0.5
+	_notice.anchor_right = 0.5
+	_notice.anchor_top = 1.0
+	_notice.anchor_bottom = 1.0
+	_notice.position = Vector2(-140.0, -(MARGIN + SLOT_SIZE + 58.0))
+	_notice.size = Vector2(280.0, 24.0)
+	_notice.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_notice.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_notice)
 
 	_temperature = Label.new()
 	_temperature.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)

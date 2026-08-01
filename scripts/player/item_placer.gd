@@ -46,9 +46,18 @@ func _unhandled_input(event: InputEvent) -> void:
 	if _inventory == null:
 		return
 	# One primary action: use what is in hand, and swing it if it is not something that
-	# gets used. Eating, placing and attacking never compete for the same click.
+	# gets used. Eating, placing, shooting and attacking never compete for the same click.
 	if use_held_item():
 		return
+
+	# A gun in hand takes the click even when it is empty, so pulling the trigger on an
+	# empty pistol is a click and a refusal rather than a pistol-whip.
+	var firearm := get_parent().get_node_or_null(^"Firearm")
+	if firearm != null and firearm.has_method(&"is_holding_firearm") \
+			and firearm.is_holding_firearm():
+		firearm.fire()
+		return
+
 	var melee := get_parent().get_node_or_null(^"Melee")
 	if melee != null and melee.has_method(&"swing"):
 		melee.swing()
