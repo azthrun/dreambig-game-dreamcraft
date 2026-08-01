@@ -200,3 +200,57 @@ func test_running_is_faster_than_walking_and_drops_are_declared() -> void:
 	var drops := CreatureKind.drops(deer)
 	assert_true(drops.has(ItemKind.Kind.RAW_MEAT), "deer should yield meat")
 	assert_true(drops.has(ItemKind.Kind.HIDE), "deer should yield hide")
+
+
+## Context with a predator at `distance` along +Z, and nothing else about.
+func _with_predator(context: Dictionary, distance: float) -> Dictionary:
+	var with := context.duplicate()
+	with["predator_position"] = Vector3(0.0, 0.0, distance)
+	with["predator_present"] = true
+	return with
+
+
+func test_a_deer_runs_from_a_leopard_with_no_player_involved() -> void:
+	# Prey that only watched the player would graze while a predator closed on it, and
+	# the hunt would be something the player never sees happen.
+	var brain := _brain()
+	brain.tick(0.2, _with_predator(_calm(), DETECTION * 0.5))
+	assert_eq(brain.state_name(), "flee")
+	assert_almost_eq(brain.desired_direction().z, -1.0, 0.001,
+			"it should run away from the leopard at +Z")
+
+
+func test_a_distant_leopard_is_not_noticed() -> void:
+	var brain := _brain()
+	for _i in 10:
+		brain.tick(0.2, _with_predator(_calm(), DETECTION * 2.0))
+	assert_ne(brain.state_name(), "flee")
+
+
+func test_the_nearer_of_player_and_predator_is_what_it_runs_from() -> void:
+	# Running from the player straight into a leopard would be worse than not fleeing.
+	var from_leopard := _brain()
+	from_leopard.tick(0.2, _with_predator(_threatened(DETECTION * 0.9), DETECTION * 0.3))
+	assert_almost_eq(from_leopard.desired_direction().z, -1.0, 0.001,
+			"the leopard is nearer, so run from the leopard")
+
+	var from_player := _brain()
+	from_player.tick(0.2, _with_predator(_threatened(DETECTION * 0.3), DETECTION * 0.9))
+	assert_almost_eq(from_player.desired_direction().x, -1.0, 0.001,
+			"and from the player when the player is nearer")
+
+
+func test_a_deer_keeps_running_until_well_clear_of_a_leopard() -> void:
+	# The same release margin the player gets. Without it a deer that had just escaped
+	# detection would stop dead with the leopard a metre outside its notice.
+	var brain := _brain()
+	brain.tick(0.2, _with_predator(_calm(), DETECTION * 0.5))
+	assert_eq(brain.state_name(), "flee")
+	for _i in 20:
+		brain.tick(0.2, _with_predator(_calm(), DETECTION * 1.1))
+	assert_eq(brain.state_name(), "flee",
+			"just outside detection is not far enough to calm down")
+
+	for _i in 30:
+		brain.tick(0.2, _with_predator(_calm(), DETECTION * 4.0))
+	assert_ne(brain.state_name(), "flee", "but it does calm down eventually")

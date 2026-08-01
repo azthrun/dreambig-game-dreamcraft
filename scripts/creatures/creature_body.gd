@@ -26,6 +26,11 @@ const DECISION_INTERVAL := 0.2
 ## Beyond this from the player, a creature stops thinking entirely.
 const ACTIVE_RADIUS_M := 130.0
 
+## How far past its own detection range a creature looks for other animals, so a brain's
+## release margin has something to measure against. Matches the largest margin either
+## brain applies.
+const NEIGHBOUR_SEARCH_MARGIN := 1.5
+
 ## Movement below this in a decision window counts as no progress, which is what tells the
 ## brain it is wedged.
 const PROGRESS_EPSILON_M := 0.25
@@ -57,6 +62,11 @@ var _map: RefCounted
 var _player: Node3D
 var _brain: RefCounted
 var _animator: AnimationPlayer
+## Where every other animal is. Null in tests that care only about one animal, which is
+## why every use of it is guarded.
+var _registry: RefCounted
+## The animal this one is hunting, or running from, as of the last decision.
+var _neighbour: Node3D
 
 var _decision_countdown := 0.0
 var _last_decision_position := Vector3.ZERO
@@ -66,10 +76,13 @@ var _current_clip := ""
 
 
 func configure(p_kind: int, map: RefCounted, player: Node3D,
-		seed_value: int) -> void:
+		seed_value: int, registry: RefCounted = null) -> void:
 	kind = p_kind
 	_map = map
 	_player = player
+	_registry = registry
+	if _registry != null:
+		_registry.add(get_instance_id(), p_kind, global_position, self)
 	# Role picks the brain, not species, so the next four animals need no new wiring.
 	_brain = PredatorBrain.new(seed_value) if CreatureKind.is_predator(p_kind) \
 			else PreyBrain.new(seed_value)
@@ -101,6 +114,14 @@ func configure(p_kind: int, map: RefCounted, player: Node3D,
 	_set_simulated(false)
 
 
+## Leaving the tree for any reason drops the registration, so a query can never hand back
+## a freed body. Death removes it too, but an animal can also be freed outright — the
+## island is repopulated that way.
+func _exit_tree() -> void:
+	if _registry != null:
+		_registry.remove(get_instance_id())
+
+
 func brain() -> RefCounted:
 	return _brain
 
@@ -118,23 +139,34 @@ func is_dead() -> bool:
 
 
 ## Wounds the creature. Being hit also panics it, so a struck animal runs whether or not
-## it had noticed the player.
-func take_damage(amount: float) -> void:
+## it had noticed its attacker.
+##
+## `from` is where the blow came from, so a deer mauled by a leopard runs from the leopard
+## rather than from the player who is not there. Left out, it means the player.
+func take_damage(amount: float, from: Vector3 = Vector3.INF) -> void:
 	if amount <= 0.0 or is_dead():
 		return
 	_health = maxf(_health - amount, 0.0)
 	_flash_countdown = HIT_FLASH_SECONDS
 	_apply_flash(true)
 
-	if _brain != null and _player != null:
+	var struck_by_player := from == Vector3.INF
+	if struck_by_player and _player != null:
+		from = _player.global_position
+
+	if _brain != null and from != Vector3.INF:
 		# Woken and running, even from behind and even if dormant a moment ago.
 		_active = true
 		_set_simulated(true)
 		_brain.tick(DECISION_INTERVAL, {
 			"position": global_position,
-			"threat_position": _player.global_position,
-			"threat_present": true,
+			"threat_position": from if struck_by_player else Vector3.ZERO,
+			"threat_present": struck_by_player,
 			"threat_crouching": false,
+			"predator_position": from,
+			"predator_present": not struck_by_player,
+			"quarry_position": from,
+			"quarry_present": not struck_by_player,
 			## Struck animals always notice, whatever the range.
 			"detection_m": 100000.0,
 			"made_progress": true,
@@ -145,6 +177,8 @@ func take_damage(amount: float) -> void:
 
 
 func _die() -> void:
+	if _registry != null:
+		_registry.remove(get_instance_id())
 	died.emit(kind, global_position)
 	var corpse: Node3D = Corpse.new()
 	# Parented to the creature's parent, so the corpse outlives the animal.
@@ -209,24 +243,44 @@ func _physics_process(delta: float) -> void:
 	_move(delta)
 
 
-## Strikes the player while the brain says it is in range, on this species' own cadence.
+## Strikes whatever the brain is hunting while it says it is in range, on this species'
+## own cadence.
 ##
 ## The cooldown lives here rather than in the brain, so a slower or faster animal is a
-## number in the species table rather than a second brain.
+## number in the species table rather than a second brain. The brain names its target but
+## never touches health: one is a decision, the other is a consequence.
 func _update_attack(delta: float) -> void:
 	if _attack_countdown > 0.0:
 		_attack_countdown -= delta
 
 	if not _brain.has_method(&"is_attacking") or not _brain.is_attacking():
 		return
-	if _attack_countdown > 0.0 or _player == null or not is_instance_valid(_player):
+	if _attack_countdown > 0.0:
 		return
 
+	if _brain.has_method(&"is_hunting_quarry") and _brain.is_hunting_quarry():
+		_strike_neighbour()
+		return
+
+	if _player == null or not is_instance_valid(_player):
+		return
 	_attack_countdown = CreatureKind.attack_interval(kind)
 	if _player.has_method(&"stats"):
 		var stats: RefCounted = _player.stats()
 		if stats != null and not stats.is_dead():
 			stats.damage(CreatureKind.attack_damage(kind))
+
+
+## A strike on another animal. The kill is reported back to the brain, which is the only
+## thing the brain cannot work out for itself.
+func _strike_neighbour() -> void:
+	if not is_instance_valid(_neighbour) or _neighbour.is_dead():
+		return
+	_attack_countdown = CreatureKind.attack_interval(kind)
+	_neighbour.take_damage(CreatureKind.attack_damage(kind), global_position)
+	if _neighbour.is_dead() and _brain.has_method(&"note_kill"):
+		_brain.note_kill()
+		_neighbour = null
 
 
 ## Re-decides. Only reached on the decision interval, so everything here is off the
@@ -243,6 +297,13 @@ func _decide() -> void:
 	if not _active:
 		return
 
+	# Only ever from here: the neighbour scan is on the decision path, five times a
+	# second and only while awake, rather than on the per-frame path where sixty animals
+	# looking each other up would be sixty times the work for the same answer.
+	if _registry != null:
+		_registry.move(get_instance_id(), global_position)
+		_neighbour = _find_neighbour()
+
 	# Progress is measured between decisions rather than between frames: a creature
 	# pressed against a rock still jitters frame to frame, but covers no ground.
 	var travelled := global_position.distance_to(_last_decision_position)
@@ -257,6 +318,13 @@ func _decide() -> void:
 	if _player != null and _player.has_method(&"is_sprinting"):
 		sprinting = _player.is_sprinting()
 
+	var neighbour_at := Vector3.ZERO
+	var neighbour_present := is_instance_valid(_neighbour)
+	if neighbour_present:
+		neighbour_at = _neighbour.global_position
+
+	# Both brains are handed the neighbour under the name their own role cares about,
+	# and each ignores the other. A predator hunts prey; prey runs from predators.
 	_brain.tick(DECISION_INTERVAL, {
 		"position": global_position,
 		"anchor": _anchor,
@@ -265,10 +333,35 @@ func _decide() -> void:
 		"threat_present": _player != null and is_instance_valid(_player),
 		"threat_crouching": crouching,
 		"threat_sprinting": sprinting,
+		"quarry_position": neighbour_at,
+		"quarry_present": neighbour_present,
+		"predator_position": neighbour_at,
+		"predator_present": neighbour_present,
 		"detection_m": CreatureKind.detection_m(kind),
 		"health_fraction": health_fraction(),
 		"made_progress": _made_progress,
 	})
+
+
+## The nearest animal of the opposite role, within the range this species can sense.
+##
+## Searched a little beyond detection, because the brains apply their own release margin
+## and an animal that vanished from the search the instant it left detection range would
+## make that margin meaningless.
+func _find_neighbour() -> Node3D:
+	var detection := CreatureKind.detection_m(kind)
+	var wanted := CreatureKind.Role.PREDATOR
+	if CreatureKind.is_predator(kind):
+		wanted = CreatureKind.Role.PREY
+		# Predators track animals further than they notice a person, and the search has
+		# to reach as far as the brain is willing to look or the extra range is fiction.
+		detection = PredatorBrain.quarry_range(detection)
+	var found: Dictionary = _registry.nearest_of_role(global_position, wanted,
+			detection * NEIGHBOUR_SEARCH_MARGIN, get_instance_id())
+	if found.is_empty():
+		return null
+	var body: Variant = found.get("ref")
+	return body if body is Node3D and is_instance_valid(body) else null
 
 
 ## Switches a creature between simulated and dormant.

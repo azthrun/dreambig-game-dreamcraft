@@ -157,6 +157,41 @@ of this change; the comparison between them, taken back to back, is.
 Always measure the parent commit in the same sitting. A single set of numbers from a
 machine in an unknown state can be read as a regression that does not exist.
 
+## Measured result — predators hunting prey (2026-08-01)
+
+Animals now look each other up: a predator finds the nearest deer, a deer finds the
+nearest predator. The worry was the lookup, since a naive version is every animal asking
+about every other animal on every frame — 3,600 distance checks per frame at sixty
+animals.
+
+Two things keep it off the frame path, and both are load-bearing rather than tidy:
+
+- The scan runs **only on the decision tick**, five times a second, not per frame.
+- It runs **only for animals inside the active radius**. A dormant animal does not think,
+  so it does not search either — the same dormancy that made sixty deer affordable is
+  what makes sixty deer looking for each other affordable.
+
+Three interleaved pairs against the parent commit, same sitting:
+
+| Pair | Branch 1% low | Parent 1% low |
+|---|---|---|
+| 1 | 141.5 | 143.2 |
+| 2 | 142.7 | 66.0 |
+| 3 | 180.0 | 135.0 |
+
+**No measurable cost** — the branch is at or above the parent in every pair. The parent's
+66.0 is the kind of outlier this document already warns about, and is the reason the
+comparison is made in pairs rather than as two averages.
+
+### A density measurement, not a frame-rate one
+
+Predators track prey to 2.5× the range at which they notice a person. That multiplier was
+not a guess: at the plain 30 m detection range, a one-off script over the real island's
+placement found only a handful of the twenty predators had a deer anywhere near them, with
+a **median nearest deer of 101 m**. A hunt would have been something a player essentially
+never happened to see. At the 75 m scent range, **8 of 20 predators (40%) start with prey
+in range**. Nothing about the danger to the player changed.
+
 ## Startup cost
 
 Startup is a separate concern from frame rate and is **not** currently within budget in

@@ -222,3 +222,174 @@ func test_a_leopard_cannot_kill_a_healthy_player_instantly() -> void:
 			/ CreatureKind.attack_damage(CreatureKind.Kind.LEOPARD)
 	assert_true(hits >= 4.0,
 			"a leopard should need several hits, needs %.1f" % hits)
+
+
+## The same context, with a deer at `distance` along +Z. The player and the animal are on
+## perpendicular axes so which one is being chased is visible in the direction alone.
+func _with_quarry(context: Dictionary, distance: float) -> Dictionary:
+	var with := context.duplicate()
+	with["quarry_position"] = Vector3(0.0, 0.0, distance)
+	with["quarry_present"] = true
+	return with
+
+
+func test_a_predator_hunts_prey_with_no_player_anywhere() -> void:
+	# The island has to be alive when nobody is watching the player-facing half of it.
+	# Stalking range for an animal starts beyond the range a person is noticed at, so
+	# the distance here is measured against the scent range rather than detection.
+	var brain := _brain()
+	brain.tick(0.2, _with_quarry(_alone(), Brain.quarry_range(DETECTION) * 0.8))
+	assert_eq(brain.state_name(), "stalk")
+	assert_eq(brain.target(), Brain.Target.QUARRY)
+	assert_almost_eq(brain.desired_direction().z, 1.0, 0.001,
+			"it should be closing on the deer at +Z")
+
+
+func test_prey_is_hunted_through_the_same_five_stages() -> void:
+	# Not a second code path: the stages the player experiences are the stages a deer
+	# experiences, which is what makes watching a hunt a warning.
+	var brain := _brain()
+	brain.tick(0.2, _with_quarry(_alone(), Brain.quarry_range(DETECTION) * 0.8))
+	assert_eq(brain.state_name(), "stalk")
+	brain.tick(0.2, _with_quarry(_alone(), DETECTION * 0.8))
+	assert_eq(brain.state_name(), "charge")
+	assert_true(brain.is_running(), "a charge at a deer is still a run")
+	brain.tick(0.2, _with_quarry(_alone(), Brain.ATTACK_RANGE_M * 0.6))
+	assert_eq(brain.state_name(), "attack")
+	assert_true(brain.is_attacking())
+	assert_true(brain.is_hunting_quarry(),
+			"the body has to know the strike lands on the deer, not the player")
+
+
+func test_the_closer_of_player_and_prey_is_chosen() -> void:
+	# Both halves, because a predator that always preferred the player would make the
+	# island a set of threats aimed at one person, and one that always preferred prey
+	# could be walked up to.
+	var hunting_deer := _brain()
+	hunting_deer.tick(0.2, _with_quarry(_at(DETECTION * 0.9), DETECTION * 0.3))
+	assert_eq(hunting_deer.target(), Brain.Target.QUARRY,
+			"the deer is nearer, so the deer is the one being hunted")
+
+	var hunting_player := _brain()
+	hunting_player.tick(0.2, _with_quarry(_at(DETECTION * 0.3), DETECTION * 0.9))
+	assert_eq(hunting_player.target(), Brain.Target.PLAYER)
+	assert_almost_eq(hunting_player.desired_direction().x, 1.0, 0.001,
+			"and it moves at the player, not the deer")
+
+
+func test_an_unnoticed_deer_is_not_hunted() -> void:
+	var brain := _brain()
+	brain.tick(0.2, _with_quarry(_alone(), DETECTION * 3.0))
+	assert_eq(brain.state_name(), "patrol")
+	assert_eq(brain.target(), Brain.Target.NONE)
+
+
+func test_a_crouching_player_can_be_passed_over_for_a_deer() -> void:
+	# Crouching shortens the range at which the player is noticed, so a crouched player
+	# nearer than the deer can still be the one that goes unhunted. This is the mechanic
+	# paying off against a target that did not exist when it was written.
+	var context := _with_quarry(_at(DETECTION * 0.5, 1.0, true), DETECTION * 0.7)
+	var brain := _brain()
+	brain.tick(0.2, context)
+	assert_eq(brain.target(), Brain.Target.QUARRY,
+			"the nearer crouching player should go unnoticed")
+
+	# The same distances standing up, to show the crouch is what did it.
+	var standing := _brain()
+	standing.tick(0.2, _with_quarry(_at(DETECTION * 0.5), DETECTION * 0.7))
+	assert_eq(standing.target(), Brain.Target.PLAYER)
+
+
+func test_a_kill_ends_the_hunt() -> void:
+	var brain := _brain()
+	brain.tick(0.2, _with_quarry(_alone(), Brain.ATTACK_RANGE_M * 0.6))
+	assert_eq(brain.state_name(), "attack")
+
+	brain.note_kill()
+	assert_eq(brain.state_name(), "patrol", "it should break off, not keep swinging")
+	assert_eq(brain.target(), Brain.Target.NONE)
+
+
+func test_a_fed_predator_leaves_the_next_deer_alone_for_a_while() -> void:
+	# Without this a leopard walks from carcass to carcass and the island empties.
+	var brain := _brain()
+	brain.tick(0.2, _with_quarry(_alone(), Brain.ATTACK_RANGE_M * 0.6))
+	brain.note_kill()
+
+	for _i in 20:
+		brain.tick(0.2, _with_quarry(_alone(), DETECTION * 0.5))
+	assert_eq(brain.target(), Brain.Target.NONE,
+			"still feeding, so the next deer is not hunted")
+
+	# Both halves of the gate: it must start hunting again once the window passes.
+	for _i in int(Brain.FEED_SECONDS / 0.2) + 2:
+		brain.tick(0.2, _with_quarry(_alone(), DETECTION * 0.5))
+	assert_eq(brain.target(), Brain.Target.QUARRY,
+			"and it should hunt again afterwards, not retire")
+
+
+func test_feeding_does_not_make_a_predator_safe_to_approach() -> void:
+	# The feed timer suppresses hunting animals, not defending itself. Walking up to a
+	# leopard on a carcass should not be free.
+	var brain := _brain()
+	brain.tick(0.2, _with_quarry(_alone(), Brain.ATTACK_RANGE_M * 0.6))
+	brain.note_kill()
+	brain.tick(0.2, _with_quarry(_at(DETECTION * 0.4), DETECTION * 0.2))
+	assert_eq(brain.target(), Brain.Target.PLAYER)
+
+
+func test_a_hunted_deer_is_not_swapped_for_an_equally_close_one() -> void:
+	# Two candidates at nearly the same distance would otherwise change the target every
+	# decision, and the animal would run at neither.
+	var brain := _brain()
+	var swaps := 0
+	var previous := Brain.Target.NONE
+	for i in 40:
+		# The player and the deer trade places by centimetres, either side of equal.
+		var jitter := 0.02 * (1.0 if i % 2 == 0 else -1.0)
+		var context := _with_quarry(_at(DETECTION * 0.5 + jitter),
+				DETECTION * 0.5 - jitter)
+		brain.tick(0.2, context)
+		if previous != Brain.Target.NONE and brain.target() != previous:
+			swaps += 1
+		previous = brain.target()
+	assert_true(swaps <= 1, "target flipped %d times over a centimetre" % swaps)
+
+
+func test_a_wounded_predator_breaks_off_a_hunt_too() -> void:
+	var brain := _brain()
+	brain.tick(0.2, _with_quarry(_alone(), Brain.ATTACK_RANGE_M * 0.6))
+	assert_eq(brain.state_name(), "attack")
+	var hurt := _with_quarry(_alone(), Brain.ATTACK_RANGE_M * 0.6)
+	hurt["health_fraction"] = 0.1
+	brain.tick(0.2, hurt)
+	assert_eq(brain.state_name(), "retreat")
+	assert_almost_eq(brain.desired_direction().z, -1.0, 0.001,
+			"it should run from the animal it was fighting, at -Z")
+
+
+func test_an_animal_is_rushed_from_further_out_than_a_person() -> void:
+	# Both halves of the asymmetry, at one distance. A predator stalks a player at 20m
+	# and is still deciding; at the same 20m it is already running at a deer, because a
+	# stalk covers 1.1 m/s and a deer that breaks covers 8.4.
+	var stalking_player := _brain()
+	stalking_player.tick(0.2, _at(DETECTION * 0.8))
+	assert_eq(stalking_player.state_name(), "stalk")
+
+	var charging_deer := _brain()
+	charging_deer.tick(0.2, _with_quarry(_alone(), DETECTION * 0.8))
+	assert_eq(charging_deer.state_name(), "charge")
+
+
+func test_prey_is_tracked_further_than_a_player_is_noticed() -> void:
+	assert_true(Brain.quarry_range(DETECTION)
+					> Brain.detection_range(DETECTION, false, true),
+			"even a sprinting player should not be noticed further than prey is tracked")
+	var brain := _brain()
+	# A deer at a distance where a standing player would go entirely unnoticed.
+	brain.tick(0.2, _with_quarry(_alone(), DETECTION * 1.8))
+	assert_eq(brain.target(), Brain.Target.QUARRY)
+
+	var ignoring_player := _brain()
+	ignoring_player.tick(0.2, _at(DETECTION * 1.8))
+	assert_eq(ignoring_player.target(), Brain.Target.NONE)

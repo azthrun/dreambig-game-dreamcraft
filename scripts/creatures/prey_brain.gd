@@ -9,6 +9,8 @@ extends RefCounted
 ## feature testable: a whole minute of grazing, panicking and calming down is simulated by
 ## injecting deltas, with no scene and no animal.
 
+const Senses := preload("res://scripts/creatures/senses.gd")
+
 enum State { GRAZE, WANDER, FLEE }
 
 ## How long a bout of grazing or wandering lasts before re-rolling.
@@ -78,22 +80,47 @@ static func detection_range(base_m: float, crouching: bool) -> float:
 ## Advances the decision.
 ##
 ## `context` carries: position, threat_position, threat_present, threat_crouching,
-## detection_m, and made_progress.
+## predator_position, predator_present, detection_m, and made_progress.
+##
+## Two things are worth running from and the nearer one wins. A deer that only ever
+## watched the player would graze while a leopard closed on it, which would make the
+## hunt something the player reads about in a log rather than watches.
 func tick(delta: float, context: Dictionary) -> void:
 	if delta <= 0.0:
 		return
 
 	_update_stuck(delta, context)
 
-	var threat_present: bool = context.get("threat_present", false)
 	var position: Vector3 = context.get("position", Vector3.ZERO)
-	var threat: Vector3 = context.get("threat_position", Vector3.ZERO)
-	var detection: float = detection_range(
-			float(context.get("detection_m", 20.0)),
-			bool(context.get("threat_crouching", false)))
+	var base_detection: float = float(context.get("detection_m", 20.0))
+	var candidates: Array = [
+		{
+			"position": context.get("threat_position", Vector3.ZERO),
+			"present": bool(context.get("threat_present", false)),
+			"detection": detection_range(base_detection,
+					bool(context.get("threat_crouching", false))),
+		},
+		# A stalking predator does not crouch, but it is what a deer is built to watch
+		# for: noticed at the flat range, and no further off than the player standing up.
+		{
+			"position": context.get("predator_position", Vector3.ZERO),
+			"present": bool(context.get("predator_present", false)),
+			"detection": base_detection,
+		},
+	]
+
+	var pick := Senses.nearest(position, candidates)
+	# Whichever was noticed. When neither was, the release margin below still has to
+	# measure against something, or an animal fleeing a leopard that slipped just outside
+	# its detection would calm down instead of clearing the margin first.
+	var chosen: Dictionary = candidates[pick] if pick != Senses.NOTHING \
+			else _nearest_present(position, candidates)
+	var threat_present: bool = bool(chosen["present"])
+	var threat: Vector3 = chosen["position"]
+	var detection: float = chosen["detection"]
 	var distance := position.distance_to(threat) if threat_present else INF
 
-	if threat_present and distance <= detection:
+	if pick != Senses.NOTHING:
 		_flee_tail = FLEE_TAIL_SECONDS
 		if _state != State.FLEE:
 			_enter(State.FLEE)
@@ -116,6 +143,19 @@ func tick(delta: float, context: Dictionary) -> void:
 	_timer -= delta
 	if _timer <= 0.0:
 		_enter(State.WANDER if _state == State.GRAZE else State.GRAZE)
+
+
+## Nearest candidate that exists at all, detected or not. Falls back to the first, which
+## is the player, so there is always something to measure against.
+func _nearest_present(position: Vector3, candidates: Array) -> Dictionary:
+	var best: Dictionary = candidates[0]
+	var best_distance := INF
+	for candidate in candidates:
+		var distance: float = Senses.distance_to(position, candidate)
+		if distance < best_distance:
+			best_distance = distance
+			best = candidate
+	return best
 
 
 ## Direction away from a threat, kept horizontal so animals do not try to flee upwards.

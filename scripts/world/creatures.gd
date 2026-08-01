@@ -8,6 +8,7 @@ extends Node3D
 const CreatureKind := preload("res://scripts/creatures/creature_kind.gd")
 const CreatureBody := preload("res://scripts/creatures/creature_body.gd")
 const Population := preload("res://scripts/creatures/population.gd")
+const CreatureRegistry := preload("res://scripts/creatures/creature_registry.gd")
 const Heightmap := preload("res://scripts/world/heightmap.gd")
 
 ## Total animals on the island.
@@ -22,6 +23,13 @@ const MAX_ATTEMPTS := 8000
 
 var _counts: Dictionary = {}
 var _creatures: Array[Node3D] = []
+## Shared by every animal, so a predator can find a deer and a deer can find the
+## predator without either walking the scene tree.
+var _registry: RefCounted = CreatureRegistry.new()
+
+
+func registry() -> RefCounted:
+	return _registry
 
 
 func populate(map: RefCounted, player: Node3D, seed_value: int) -> Dictionary:
@@ -29,6 +37,7 @@ func populate(map: RefCounted, player: Node3D, seed_value: int) -> Dictionary:
 		child.queue_free()
 	_creatures.clear()
 	_counts = {}
+	_registry = CreatureRegistry.new()
 
 	var rng := RandomNumberGenerator.new()
 	# Offset so animal placement does not correlate with terrain or prop noise.
@@ -81,14 +90,24 @@ func stat_lines() -> PackedStringArray:
 
 func status_line() -> String:
 	var active := 0
+	var hunting := 0
 	for creature in _creatures:
-		if is_instance_valid(creature) and creature.is_active():
-			active += 1
+		if not is_instance_valid(creature) or not creature.is_active():
+			continue
+		active += 1
+		# Predators hunting animals rather than the player. Reported because it is
+		# otherwise invisible: it happens wherever the deer are, not wherever the
+		# player is looking.
+		var brain: RefCounted = creature.brain()
+		if brain != null and brain.has_method(&"is_hunting_quarry") \
+				and brain.is_hunting_quarry():
+			hunting += 1
 	var parts := PackedStringArray()
 	for kind in CreatureKind.ALL:
 		parts.append("%s %d" % [CreatureKind.name_of(kind),
 				int(_counts.get(kind, 0))])
-	return "creatures: %s (%d thinking)" % [", ".join(parts), active]
+	return "creatures: %s (%d thinking, %d hunting)" % [", ".join(parts), active,
+			hunting]
 
 
 func _spawn(kind: int, map: RefCounted, player: Node3D, position: Vector3,
@@ -98,7 +117,7 @@ func _spawn(kind: int, map: RefCounted, player: Node3D, position: Vector3,
 	add_child(creature)
 	creature.global_position = position
 	creature.rotation.y = yaw
-	creature.configure(kind, map, player, seed_value)
+	creature.configure(kind, map, player, seed_value, _registry)
 	_creatures.append(creature)
 
 

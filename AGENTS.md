@@ -64,6 +64,16 @@ else, which is exactly what the cuboid style is worst at hiding.
 animals from higher terrain most of the time. The leopard's spots were side-faces only
 and it read as a plain tan animal at eleven metres — inside its own charge range.
 
+**Animals find each other through the registry, never through the scene tree.**
+`creature_registry.gd` answers "nearest creature of this role within this range"; the
+brains stay pure and take positions. A new species joins the ecosystem for free, because
+role picks the brain and the registry keys off role.
+
+Two consequences that look like bugs. Dormancy means **autonomous behaviour only happens
+near the player** — a hunt on the far side of the island is not slowed down, it does not
+occur. And a predator's reach for animals is *not* its player-detection range: it tracks
+prey to `PREY_SCENT_MULTIPLIER` times that, or hunts are too rare to ever witness.
+
 **New creatures must inherit dormancy.** Beyond `ACTIVE_RADIUS_M` a creature stops
 thinking, stops animating and stops drawing. This is not an optimisation to add later:
 adding 60 deer without it put the 1% low *below* the 60 FPS target while the average still
