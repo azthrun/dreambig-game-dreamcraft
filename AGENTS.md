@@ -95,6 +95,17 @@ adding 60 deer without it put the 1% low *below* the 60 FPS target while the ave
 read 160+. See `docs/performance.md`. Never assume a new species is free — measure across
 several runs after adding one.
 
+### Procedural audio has to be built once, not per play
+
+`scripts/audio/procedural_audio.gd` synthesises every sound sample by sample — there are
+no audio assets in this project, same as there is no 3D art. That synthesis is cheap
+called rarely and expensive called often: a gunshot resynthesised fresh on every round of
+automatic fire (roughly 12/s) dropped the 1% low from ~200 FPS to below target, discovered
+while measuring the machine gun ticket. Build the `AudioStreamWAV` once — in `_ready()` or
+at construction — and replay the same buffer, the way the campfire already does for its
+fire crackle. Anything fired, looped, or otherwise repeated needs this; a one-shot played
+once per user action (a footstep, a menu click) may not.
+
 ## Testing
 
 Two seams, deliberately minimised:

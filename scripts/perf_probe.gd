@@ -37,6 +37,11 @@ var _done := false
 ## full precipitation and lightning at once.
 const MEASURE_WEATHER := 4  # WeatherModel.State.THUNDERSTORM
 
+## Rounds handed to the player so a held trigger never runs dry mid-measurement.
+## ~23 s at the machine gun's 0.08 s interval is under 300 rounds; this is comfortably
+## more.
+const MEASURE_AMMO := 600
+
 
 func start(player: Node3D) -> void:
 	_player = player
@@ -50,8 +55,29 @@ func start(player: Node3D) -> void:
 	if _player != null and _player.has_method(&"release_mouse"):
 		_player.release_mouse()
 	Input.action_press(&"move_forward")
+	_arm_with_machine_gun()
 	print("perf: measuring %.0fs after %.0fs warmup, vsync off"
 			% [MEASURE_SECONDS, WARMUP_SECONDS])
+
+
+## Fires a machine gun for the whole measurement window.
+##
+## Worst case has to include the newest per-frame cost, not just the last one that got
+## measured: a raycast and a recoiling viewmodel on every one of ~12 rounds a second is
+## a real addition to the frame, and assuming it is free is exactly the mistake this
+## file exists to catch.
+func _arm_with_machine_gun() -> void:
+	if _player == null or not _player.has_method(&"inventory"):
+		return
+	const ItemKind := preload("res://scripts/items/item_kind.gd")
+	var inventory: RefCounted = _player.inventory()
+	inventory.add(ItemKind.Kind.MACHINE_GUN, 1)
+	inventory.add(ItemKind.Kind.MACHINE_GUN_AMMO, MEASURE_AMMO)
+	for slot in 5:
+		if inventory.item_in_slot(slot) == ItemKind.Kind.MACHINE_GUN:
+			inventory.select(slot)
+			break
+	Input.action_press(&"fire")
 
 
 func _process(delta: float) -> void:
@@ -80,6 +106,7 @@ func _process(delta: float) -> void:
 func _finish() -> void:
 	_done = true
 	Input.action_release(&"move_forward")
+	Input.action_release(&"fire")
 	for line in report_lines():
 		print(line)
 	get_tree().quit(0 if meets_target() else 1)

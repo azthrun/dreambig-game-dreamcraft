@@ -25,6 +25,9 @@ var _creature: CharacterBody3D
 
 
 func after_each() -> void:
+	# The automatic-fire tests hold the action down; releasing it here stops that from
+	# leaking into whichever test runs next.
+	Input.action_release(&"fire")
 	if _world != null and is_instance_valid(_world):
 		_world.free()
 	_world = null
@@ -44,14 +47,15 @@ func _flat_map() -> RefCounted:
 	return map
 
 
-## Player armed with a pistol and `rounds` of ammunition, with an animal `distance`
+## Player armed with `weapon` and `rounds` of its ammunition, with an animal `distance`
 ## ahead.
 ##
 ## A leopard rather than a deer by default: one round kills a deer outright, and a test
 ## that then reads the animal's health is reading a freed node. That is asserted on its
 ## own below instead.
 func _setup(rounds: int = 6, distance: float = 8.0,
-		kind: int = CreatureKind.Kind.LEOPARD) -> void:
+		kind: int = CreatureKind.Kind.LEOPARD,
+		weapon: int = ItemKind.Kind.PISTOL) -> void:
 	_world = Node3D.new()
 	scene_root().add_child(_world)
 
@@ -71,10 +75,10 @@ func _setup(rounds: int = 6, distance: float = 8.0,
 	_viewmodel = _player.get_node(^"Camera3D/Viewmodel")
 
 	_inventory = _player.inventory()
-	_inventory.add(ItemKind.Kind.PISTOL, 1)
+	_inventory.add(weapon, 1)
 	if rounds > 0:
-		_inventory.add(ItemKind.Kind.PISTOL_AMMO, rounds)
-	_select(ItemKind.Kind.PISTOL)
+		_inventory.add(ItemKind.ammo_for(weapon), rounds)
+	_select(weapon)
 
 	_creature = CreatureBody.new()
 	_world.add_child(_creature)
@@ -302,6 +306,144 @@ func test_an_empty_pistol_still_takes_the_click_rather_than_pistol_whipping() ->
 	placer._unhandled_input(_press(&"fire"))
 	assert_almost_eq(_creature.health(), before, 0.001,
 			"an empty gun clicks; it does not become a club")
+
+
+func test_the_machine_gun_is_a_firearm_distinct_from_the_pistol() -> void:
+	assert_true(ItemKind.is_firearm(ItemKind.Kind.MACHINE_GUN))
+	assert_eq(ItemKind.ammo_for(ItemKind.Kind.MACHINE_GUN),
+			ItemKind.Kind.MACHINE_GUN_AMMO)
+	assert_ne(ItemKind.ammo_for(ItemKind.Kind.MACHINE_GUN),
+			ItemKind.ammo_for(ItemKind.Kind.PISTOL),
+			"the two guns must not draw from the same ammunition")
+
+
+func test_only_the_machine_gun_is_automatic() -> void:
+	# What actually distinguishes it from the pistol mechanically: everything else —
+	## damage, range, recoil — is just a different number in the same table.
+	assert_true(ItemKind.is_automatic(ItemKind.Kind.MACHINE_GUN))
+	assert_false(ItemKind.is_automatic(ItemKind.Kind.PISTOL))
+	assert_false(ItemKind.is_automatic(ItemKind.Kind.STONE_TOOL))
+
+
+func test_clicking_once_fires_the_machine_gun_once() -> void:
+	# Automatic does not mean it cannot also be tapped.
+	await _setup(30, 8.0, CreatureKind.Kind.LEOPARD, ItemKind.Kind.MACHINE_GUN)
+	assert_true(_firearm.fire())
+	assert_eq(_firearm.rounds_remaining(), 29)
+	await step_physics(2)
+	assert_eq(_firearm.rounds_remaining(), 29,
+			"a single call to fire() must not keep firing on its own")
+
+
+func test_holding_fire_keeps_the_machine_gun_firing_on_its_own() -> void:
+	# The acceptance criterion itself: holding the key, not clicking it, is what
+	# produces sustained fire. is_automatic_firearm() is what lets the primary action
+	# step out of the way and leave this to Firearm's own polling.
+	await _setup(60, 8.0, CreatureKind.Kind.LEOPARD, ItemKind.Kind.MACHINE_GUN)
+	assert_true(_firearm.is_automatic_firearm())
+	var before: int = _firearm.rounds_remaining()
+
+	Input.action_press(&"fire")
+	await step_physics(60)
+	Input.action_release(&"fire")
+
+	assert_true(_firearm.rounds_remaining() < before - 5,
+			"holding the trigger for a second should have spent well more than a single click's worth of rounds, spent %d"
+					% (before - _firearm.rounds_remaining()))
+
+
+func test_automatic_fire_stops_the_instant_the_trigger_is_released() -> void:
+	await _setup(60, 8.0, CreatureKind.Kind.LEOPARD, ItemKind.Kind.MACHINE_GUN)
+	Input.action_press(&"fire")
+	await step_physics(20)
+	Input.action_release(&"fire")
+	var after_release: int = _firearm.rounds_remaining()
+	await step_physics(30)
+	assert_eq(_firearm.rounds_remaining(), after_release,
+			"no more rounds should be spent once the key is up")
+
+
+func test_the_machine_gun_fires_at_its_own_defined_rate() -> void:
+	# 0.08s between rounds quantizes to 12 over one second of physics ticks at 60 Hz;
+	# the exact count matters less than it being far faster than the pistol's own
+	# interval could ever produce and matching what the table declares.
+	await _setup(40, 8.0, CreatureKind.Kind.LEOPARD, ItemKind.Kind.MACHINE_GUN)
+	var start: int = _firearm.rounds_remaining()
+	Input.action_press(&"fire")
+	await step_physics(60)
+	Input.action_release(&"fire")
+	var fired: int = start - _firearm.rounds_remaining()
+
+	var nominal := 1.0 / ItemKind.fire_interval(ItemKind.Kind.MACHINE_GUN)
+	assert_in_range(float(fired), nominal - 3.0, nominal + 1.0,
+			"fired %d rounds in one second against a declared %.1f rounds/sec"
+					% [fired, nominal])
+	var pistol_max := int(1.0 / ItemKind.fire_interval(ItemKind.Kind.PISTOL)) + 1
+	assert_true(fired > pistol_max * 3,
+			"the machine gun should fire far faster than the pistol ever could")
+
+
+func test_holding_fire_empty_refuses_repeatedly_rather_than_jamming() -> void:
+	# Both halves: it has to try again at its own cadence rather than latching a single
+	# refusal, and it must not spend ammunition it does not have.
+	await _setup(0, 8.0, CreatureKind.Kind.LEOPARD, ItemKind.Kind.MACHINE_GUN)
+	var refusals: Array[String] = []
+	_firearm.refused.connect(func(reason: String): refusals.append(reason))
+
+	Input.action_press(&"fire")
+	await step_physics(30)
+	Input.action_release(&"fire")
+
+	assert_true(refusals.size() > 1,
+			"an empty automatic weapon should keep clicking while held, refused %d times"
+					% refusals.size())
+	assert_eq(_inventory.total_of(ItemKind.Kind.MACHINE_GUN_AMMO), 0)
+
+
+func test_recoil_climbs_during_a_sustained_burst() -> void:
+	# The other acceptance criterion: recoil has to visibly build the longer the
+	# trigger stays down, not just repeat the same single-shot kick each round.
+	await _setup(60, 8.0, CreatureKind.Kind.LEOPARD, ItemKind.Kind.MACHINE_GUN)
+	var camera: Camera3D = _player.get_node(^"Camera3D")
+	var start := camera.rotation.x
+
+	Input.action_press(&"fire")
+	await step_physics(6)
+	var after_a_few_rounds := camera.rotation.x
+	await step_physics(24)
+	Input.action_release(&"fire")
+	var after_a_longer_burst := camera.rotation.x
+
+	assert_true(after_a_few_rounds > start, "the first rounds should kick the aim up")
+	assert_true(after_a_longer_burst > after_a_few_rounds,
+			"more sustained fire should have kicked it up further still")
+
+
+func test_recoil_settles_back_down_once_the_trigger_is_released() -> void:
+	await _setup(60, 8.0, CreatureKind.Kind.LEOPARD, ItemKind.Kind.MACHINE_GUN)
+	var camera: Camera3D = _player.get_node(^"Camera3D")
+
+	Input.action_press(&"fire")
+	await step_physics(30)
+	Input.action_release(&"fire")
+	var peak := camera.rotation.x
+
+	await step_physics(60)
+	assert_true(camera.rotation.x < peak,
+			"recoil should recover once the trigger stops being held")
+
+
+func test_the_machine_gun_is_drawn_differently_from_the_pistol() -> void:
+	await _setup(6, 8.0, CreatureKind.Kind.LEOPARD, ItemKind.Kind.MACHINE_GUN)
+	await step_physics(2)
+	assert_eq(_viewmodel.shown_item(), ItemKind.Kind.MACHINE_GUN)
+	assert_true(_viewmodel.is_visible_model())
+
+	_inventory.add(ItemKind.Kind.PISTOL, 1)
+	_select(ItemKind.Kind.PISTOL)
+	await step_physics(2)
+	assert_eq(_viewmodel.shown_item(), ItemKind.Kind.PISTOL,
+			"switching to the pistol should show the pistol, not both")
 
 
 ## The primary-action dispatcher, wired the way the world wires it. Without the bind it

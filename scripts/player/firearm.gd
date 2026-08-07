@@ -39,9 +39,24 @@ var _recoil_rate := 0.0
 var _shot_audio: AudioStreamPlayer
 var _viewmodel: Node
 
+## Built once and replayed, not resynthesised per shot.
+##
+## `ProceduralAudio.gunshot()` walks a buffer sample by sample with an RNG and two
+## `exp()` calls each — cheap once, called from every `fire()` before this. At the
+## pistol's 0.45s interval that never showed up; at the machine gun's 0.08s it is called
+## roughly twelve times a second, and profiling the machine gun's own perf run (isolating
+## it from an unrelated bad reading — see docs/performance.md) found this the only real
+## per-shot cost. Every other procedural sound in this project (rain, fire, thunder) is
+## already generated once at construction for exactly this reason; this file was the one
+## that generated its buffer inside the hot path.
+var _gunshot_audio: AudioStreamWAV
+var _dry_click_audio: AudioStreamWAV
+
 
 func _ready() -> void:
 	_shot_audio = get_node_or_null(^"Shot") as AudioStreamPlayer
+	_gunshot_audio = ProceduralAudio.gunshot()
+	_dry_click_audio = ProceduralAudio.dry_click()
 
 
 func bind(player: Node, camera: Camera3D) -> void:
@@ -65,6 +80,13 @@ func held_firearm() -> int:
 
 func is_holding_firearm() -> bool:
 	return held_firearm() != ItemKind.Kind.NONE
+
+
+## Whether the gun in hand fires continuously while the key is held, rather than once
+## per click. The primary action asks this before deciding whether its own single press
+## should fire the gun at all — see `item_placer.gd`.
+func is_automatic_firearm() -> bool:
+	return ItemKind.is_automatic(held_firearm())
 
 
 func is_ready() -> bool:
@@ -95,7 +117,7 @@ func fire() -> bool:
 		# that is not working, and from a click the player did not register — so there
 		# is a sound as well as a message.
 		_cooldown = ItemKind.fire_interval(gun)
-		_play(ProceduralAudio.dry_click())
+		_play(_dry_click_audio)
 		refused.emit("out of %s" % ItemKind.name_of(ammo))
 		return false
 
@@ -107,7 +129,7 @@ func fire() -> bool:
 	var hit := _shoot(gun)
 
 	_kick(ItemKind.recoil_degrees(gun))
-	_play(ProceduralAudio.gunshot())
+	_play(_gunshot_audio)
 	if _viewmodel != null and _viewmodel.has_method(&"kick"):
 		# Told rather than watched for, so the muzzle flash cannot drift out of step
 		# with the shot that caused it.
@@ -131,6 +153,14 @@ func _physics_process(delta: float) -> void:
 	if _cooldown > 0.0:
 		_cooldown -= delta
 	_recover(delta)
+
+	# Automatic weapons are polled directly here, the same way the harvester polls its
+	# own hold-to-interact key, rather than routed through the primary action's single
+	# press event — holding the trigger down has to keep firing without a second click
+	# for every round. `fire()` still gates on its own cooldown, so this costs nothing
+	# beyond one check per physics frame while a firearm that wants it is in hand.
+	if is_automatic_firearm() and Input.is_action_pressed(&"fire"):
+		fire()
 
 
 ## Traces the shot and applies damage. Returns what was hit, or null.
@@ -162,13 +192,21 @@ func _shoot(gun: int) -> Node:
 
 
 ## Kicks the aim up, and schedules the part of it that comes back.
+##
+## Additive rather than a reset: a single pistol shot is normally well clear of the
+## previous one's recovery window, but the machine gun fires faster than
+## RECOIL_RECOVERY_SECONDS, and resetting the pool on every round was discarding
+## whatever recovery credit the previous round had not yet paid out — recoil could not
+## climb during a sustained burst, which is the entire acceptance criterion. Adding to
+## the pool and recomputing the rate from its new total is what makes recoil build up
+## while the trigger stays down and drain over one recovery window once it is released.
 func _kick(degrees: float) -> void:
 	if degrees <= 0.0 or _player == null:
 		return
 	var kick := deg_to_rad(degrees)
 	if _player.has_method(&"apply_recoil"):
 		_player.apply_recoil(kick)
-	_recoil_left = kick * RECOIL_RECOVERY
+	_recoil_left += kick * RECOIL_RECOVERY
 	_recoil_rate = _recoil_left / RECOIL_RECOVERY_SECONDS
 
 

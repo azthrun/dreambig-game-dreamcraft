@@ -212,6 +212,50 @@ Worth noting for the machine-gun ticket, which is the first thing that will fire
 timer rather than on a click: a raycast per shot is free at pistol cadence and should be
 re-measured at 600 rounds per minute, not assumed.
 
+## Measured result — the machine gun, firing continuously (2026-08-01)
+
+The pistol ticket's own follow-up note said a raycast per shot was free at pistol
+cadence and should be re-measured at automatic-weapon cadence rather than assumed. The
+perf probe now arms the player with a machine gun and holds the trigger for the entire
+measurement window, firing roughly twelve rounds a second throughout.
+
+**The first reading was 60.0 avg / ~53 1% low — below target — and it was not the
+machine gun.** Bisecting by disabling the automatic-fire call, the raycast, and the
+audio in turn, one at a time, the same ~60/~53 reading persisted even with automatic
+fire never engaged at all. A same-sitting run of the *parent* commit — no machine gun
+in the codebase whatsoever — read 60.3/54-55, matching. The machine itself was in a
+degraded state, exactly the failure mode this document already warns about: measure the
+parent alongside the branch, in the same sitting, before reading anything into a single
+number.
+
+That bisection did surface one real bug worth keeping the fix for.
+`ProceduralAudio.gunshot()` synthesises its buffer sample-by-sample with an RNG and two
+`exp()` calls per sample — cheap the way the pistol called it, once per click at a
+0.45s interval, and expensive the way `fire()` was calling it: fresh, every round, at
+the machine gun's 0.08s interval. `firearm.gd` now builds both gunshot and dry-click
+buffers once in `_ready()` and replays them, matching how every other procedural sound
+in this project (rain, fire, thunder) was already built. With that fix in place, three
+interleaved pairs — machine gun firing throughout vs. the previous commit with no
+machine gun at all — read:
+
+| Pair | Branch (firing) 1% low | Parent (no gun) 1% low |
+|---|---|---|
+| 1 | 52.1 | 52.8 |
+| 2 | 52.0 | 55.4 |
+| 3 | 55.4 | 52.2 |
+
+Indistinguishable, and both below the 60 target on this machine at this time — a
+machine-state reading, not a codebase one; compare to the 170-210 range recorded for
+the pistol ticket a few hours earlier, on the same code path. **Holding an automatic
+weapon's trigger continuously costs nothing measurable once its audio is not
+resynthesised on every round**, which is the actual, durable finding here.
+
+The rule this earns a second entry in the record for: **if a fix is applied while
+chasing a perf number, always re-run the parent commit in the same sitting before
+crediting the fix with the improvement.** The fix here was real and worth keeping
+regardless — resynthesising audio on a hot path is wrong at any frame rate — but it did
+not explain the number that prompted looking for it.
+
 ## Startup cost
 
 Startup is a separate concern from frame rate and is **not** currently within budget in

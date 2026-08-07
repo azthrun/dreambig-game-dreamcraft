@@ -23,6 +23,8 @@ enum Kind {
 	PISTOL,
 	PISTOL_AMMO,
 	FUEL,
+	MACHINE_GUN,
+	MACHINE_GUN_AMMO,
 }
 
 ## Damage dealt swinging nothing at all. Enough to kill a deer eventually, so the game is
@@ -80,6 +82,28 @@ const ITEMS := {
 	## For the flying suit, which arrives with its own ticket. Found here so the cache
 	## table is the real one rather than one that has to be revisited.
 	Kind.FUEL: {"name": "fuel", "stack": 8, "nutrition": 0.0},
+	## The answer to the worst threats, not a replacement for the pistol: weaker per
+	## round, shorter ranged, and only worth it because `automatic` lets the trigger
+	## stay down. `automatic` is the one flag `firearm()`'s cadence check does not read
+	## for itself — Firearm asks `ItemKind.is_automatic` before it lets holding the key
+	## substitute for clicking it, so a pistol answers "no" without needing a value here.
+	Kind.MACHINE_GUN: {
+		"name": "machine gun", "stack": 1, "nutrition": 0.0,
+		"firearm": {
+			"ammo": Kind.MACHINE_GUN_AMMO,
+			"damage": 11.0,
+			"range_m": 45.0,
+			"interval": 0.08,
+			"recoil_degrees": 0.85,
+			"automatic": true,
+		},
+	},
+	## Rarer than pistol ammunition, which is the whole point: an automatic weapon with
+	## as-common ammunition as a semi-automatic one would make the pistol pointless and
+	## the machine gun a default rather than an emergency tool.
+	Kind.MACHINE_GUN_AMMO: {
+		"name": "machine-gun ammo", "stack": 40, "nutrition": 0.0,
+	},
 }
 
 const ALL: Array[int] = [
@@ -96,6 +120,8 @@ const ALL: Array[int] = [
 	Kind.PISTOL,
 	Kind.PISTOL_AMMO,
 	Kind.FUEL,
+	Kind.MACHINE_GUN,
+	Kind.MACHINE_GUN_AMMO,
 ]
 
 
@@ -186,3 +212,8 @@ static func fire_interval(item: int) -> float:
 ## what makes a second shot cost something.
 static func recoil_degrees(item: int) -> float:
 	return float(firearm(item).get("recoil_degrees", 0.0))
+
+
+## Whether holding the trigger keeps firing, rather than one round per click.
+static func is_automatic(item: int) -> bool:
+	return bool(firearm(item).get("automatic", false))

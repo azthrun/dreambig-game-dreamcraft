@@ -123,3 +123,33 @@ func test_ammunition_and_gadgets_cannot_be_crafted() -> void:
 				"there must be no recipe for ammunition")
 		assert_ne(output, ItemKind.Kind.PISTOL)
 		assert_ne(output, ItemKind.Kind.FUEL)
+		assert_ne(output, ItemKind.Kind.MACHINE_GUN_AMMO)
+		assert_ne(output, ItemKind.Kind.MACHINE_GUN)
+
+
+func test_machine_gun_ammunition_is_rarer_than_pistol_ammunition() -> void:
+	# The acceptance criterion in full: an automatic weapon whose ammunition was as
+	# common as the pistol's would make the pistol pointless and the machine gun the
+	# default rather than an emergency tool.
+	assert_true(CacheLoot.chance_of(ItemKind.Kind.MACHINE_GUN_AMMO)
+					< CacheLoot.chance_of(ItemKind.Kind.PISTOL_AMMO),
+			"machine-gun ammo should be harder to find than pistol ammo")
+
+
+func test_the_machine_gun_is_the_rarest_gadget() -> void:
+	# The escalation from "a ranged option" to "an answer to the worst things on the
+	# island" has to be a later find than the pistol, not an equally likely one.
+	assert_true(CacheLoot.chance_of(ItemKind.Kind.MACHINE_GUN)
+					< CacheLoot.chance_of(ItemKind.Kind.PISTOL),
+			"the machine gun should be rarer than the pistol")
+	assert_true(CacheLoot.chance_of(ItemKind.Kind.MACHINE_GUN) < 0.1,
+			"a machine gun should be well under one draw in ten")
+
+
+func test_a_machine_gun_still_turns_up_somewhere_in_reasonable_exploration() -> void:
+	# Rare must not mean unreachable: 55 caches sit on the real island (see
+	# prop_placer_test.gd), so a share too small to ever show up across that many would
+	# make the ticket's own acceptance criterion — finding one — undeliverable.
+	var share := float(_caches_holding(ItemKind.Kind.MACHINE_GUN)) / float(SAMPLES)
+	assert_in_range(share, 0.005, 0.10,
+			"machine guns turned up in %.1f%% of caches" % (share * 100.0))

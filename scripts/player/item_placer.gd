@@ -55,6 +55,12 @@ func _unhandled_input(event: InputEvent) -> void:
 	var firearm := get_parent().get_node_or_null(^"Firearm")
 	if firearm != null and firearm.has_method(&"is_holding_firearm") \
 			and firearm.is_holding_firearm():
+		# An automatic weapon fires continuously while held, polled directly in
+		# Firearm._physics_process on the same frame the key goes down — calling
+		# fire() here too would spend a second round on the very first press.
+		if firearm.has_method(&"is_automatic_firearm") \
+				and firearm.is_automatic_firearm():
+			return
 		firearm.fire()
 		return
 

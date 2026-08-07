@@ -28,8 +28,15 @@ const TABLE := [
 	## decision rather than a habit.
 	{"item": ItemKind.Kind.PISTOL_AMMO, "weight": 6.0, "count": Vector2i(3, 8)},
 	{"item": ItemKind.Kind.FUEL, "weight": 4.0, "count": Vector2i(1, 2)},
+	## Rarer still: an automatic weapon is only an emergency tool if its ammunition is
+	## harder to come by than the pistol's, or holding the trigger down would always be
+	## the better plan.
+	{"item": ItemKind.Kind.MACHINE_GUN_AMMO, "weight": 2.5, "count": Vector2i(4, 10)},
 	## Rare. One is enough for the whole game — a second is a spare, not an upgrade.
 	{"item": ItemKind.Kind.PISTOL, "weight": 2.0, "count": Vector2i(1, 1)},
+	## Rarer than the pistol: the escalation from "a ranged option" to "an answer to the
+	## worst things on the island" has to be a later find, not an equally likely one.
+	{"item": ItemKind.Kind.MACHINE_GUN, "weight": 1.0, "count": Vector2i(1, 1)},
 ]
 
 ## How many separate draws a cache makes. More than one, so a crate reads as a supply

@@ -78,7 +78,12 @@ const VIEWS := [
 	# it, and the point of the shot is the gun and what it is aimed at.
 	{"name": "pistol", "offset": Vector3(0.0, 0.0, 0.0), "pitch_deg": -4.0,
 			"time": 0.35, "weather": 0, "near_creature": "deer",
-			"crouch": true, "hold_pistol": true},
+			"crouch": true, "hold_weapon": "pistol"},
+	# The machine gun beside the same species, so the two viewmodels can be told apart
+	# from an identical camera position rather than from memory.
+	{"name": "machine_gun", "offset": Vector3(0.0, 0.0, 0.0), "pitch_deg": -4.0,
+			"time": 0.35, "weather": 0, "near_creature": "deer",
+			"crouch": true, "hold_weapon": "machine_gun"},
 ]
 
 ## Sample contents so the hotbar and inventory screen show something. Harvesting does not
@@ -192,8 +197,8 @@ func _capture_all() -> void:
 		if bool(view.get("light_fire", false)):
 			_light_fire_in_front()
 
-		if bool(view.get("hold_pistol", false)):
-			_arm_with_pistol()
+		if view.has("hold_weapon"):
+			_arm_with(String(view["hold_weapon"]))
 
 		var settle: int = 90 if view.has("weather") else 6
 		if view.has("near_creature"):
@@ -275,19 +280,46 @@ func _beside_a_creature(fallback: Vector3, species: String) -> Vector3:
 	return stand
 
 
-## Puts a loaded pistol in the player's hands, as though one had been found in a cache.
-func _arm_with_pistol() -> void:
+## Puts a loaded firearm in the player's hands, as though one had been found in a cache.
+##
+## Only the hotbar's five slots can be selected at all — Inventory.select() refuses
+## anything past HOTBAR_SLOTS — and by the time this runs the sample items and an
+## earlier weapon view have already filled every one of them. A capture that could not
+## find a free slot would silently show whatever was already in hand, so this clears one
+## explicitly rather than hoping `add` found room.
+func _arm_with(weapon: String) -> void:
 	if not _player.has_method(&"inventory"):
 		return
 	const ItemKind := preload("res://scripts/items/item_kind.gd")
+	var item := ItemKind.Kind.PISTOL if weapon == "pistol" else ItemKind.Kind.MACHINE_GUN
 	var inventory: RefCounted = _player.inventory()
-	inventory.add(ItemKind.Kind.PISTOL, 1)
-	inventory.add(ItemKind.Kind.PISTOL_AMMO, 7)
+
 	for slot in 5:
-		if inventory.item_in_slot(slot) == ItemKind.Kind.PISTOL:
+		if inventory.item_in_slot(slot) == item:
 			inventory.select(slot)
 			return
-	printerr("screenshot: no hotbar slot free for the pistol")
+
+	var slot := _hotbar_slot_for(inventory, item)
+	if slot < 0:
+		var victim := 0
+		inventory.remove_from_slot(victim, inventory.count_in_slot(victim))
+		slot = victim
+
+	inventory.add(item, 1)
+	inventory.add(ItemKind.ammo_for(item), 30)
+	slot = _hotbar_slot_for(inventory, item)
+	if slot < 0:
+		printerr("screenshot: no hotbar slot free for the %s" % weapon)
+		return
+	inventory.select(slot)
+
+
+## The hotbar slot already holding `item`, if any, else -1.
+func _hotbar_slot_for(inventory: RefCounted, item: int) -> int:
+	for slot in 5:
+		if inventory.item_in_slot(slot) == item:
+			return slot
+	return -1
 
 
 ## Stands the player a few metres from a supply cache, facing it, optionally after
