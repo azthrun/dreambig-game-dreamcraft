@@ -50,6 +50,10 @@ const VIEWS := [
 	# from 26m to under 12m, which is the whole point of the mechanic.
 	{"name": "deer", "offset": Vector3(0.0, 0.0, 0.0), "pitch_deg": -4.0,
 			"time": 0.35, "weather": 0, "near_creature": "deer", "crouch": true},
+	# Beside the deer it is meant to read differently from: stockier, darker, lower to
+	# the ground, tusked — none of which a headless test can look at.
+	{"name": "boar", "offset": Vector3(0.0, 0.0, 0.0), "pitch_deg": -4.0,
+			"time": 0.35, "weather": 0, "near_creature": "boar", "crouch": true},
 	# One shot per cat, because the three are meant to be told apart on sight and
 	# nothing headless can check whether they actually are.
 	{"name": "leopard", "offset": Vector3(0.0, 0.0, 0.0), "pitch_deg": -4.0,
@@ -258,9 +262,10 @@ func _beside_a_creature(fallback: Vector3, species: String) -> Vector3:
 	# Prefer an animal standing on open plains. Most deer are in forest, where any shot
 	# is either a tree trunk at eye height or a canopy from above.
 	var target: Node3D = list[0]
+	var map: RefCounted = null
 	var terrain := get_parent().get_node_or_null(^"Terrain")
 	if terrain != null and terrain.has_method(&"heightmap"):
-		var map: RefCounted = terrain.heightmap()
+		map = terrain.heightmap()
 		const Biome := preload("res://scripts/world/biome.gd")
 		for candidate in list:
 			var at: Vector3 = candidate.global_position
@@ -268,6 +273,21 @@ func _beside_a_creature(fallback: Vector3, species: String) -> Vector3:
 				target = candidate
 				break
 	var stand := target.global_position + Vector3(0.0, 1.6, 11.0)
+	# The animal's own height only holds if the ground 11 m behind it is flat. It is
+	# not always: a boar standing on plains with a shallow dip just behind it put the
+	# camera's feet underwater, and the whole lower frame read as a flat blue fog tint
+	# with nothing recognisable in it.
+	#
+	# Re-levelled to the terrain actually under foot, but only for a small correction.
+	# Near a coastline the ground 11 m back can be a completely different terrace or a
+	# cliff edge; levelling fully there swapped one bad shot for a worse one — a camera
+	# aimed past a nearby cliff face with the animal itself out of frame entirely. A dip
+	# worth correcting for is a couple of metres; a cliff is not something this offset
+	# should try to compensate for at all.
+	if map != null:
+		var ground := float(map.height_at_world(stand.x, stand.z))
+		if absf(ground - target.global_position.y) <= 3.0:
+			stand.y = ground + 1.6
 
 	# Aim at the animal rather than using the view's fixed pitch, so it is centred
 	# wherever it has wandered to.

@@ -65,6 +65,15 @@ func build(parent: Node3D, kind: int) -> AnimationPlayer:
 		_box(parent, Vector3(0.0, head_y - torso_height * 0.06, -length * 0.30),
 				Vector3(width * 1.32, torso_height * 1.24, length * 0.2), mane_colour)
 
+	# Tusks are read head-on, not from the side or above — the angle a boar is actually
+	# seen from once it turns to fight, which is exactly when they matter most.
+	if bool(shape.get("tusks", false)):
+		var tusk_colour: Color = shape.get("tusk_colour", Color(0.9, 0.87, 0.8))
+		var tusk_z := -length * 0.42 - width * 0.22
+		for side in [1.0, -1.0]:
+			_box(parent, Vector3(width * 0.24 * side, head_y - width * 0.16, tusk_z),
+					Vector3(0.08, 0.08, width * 0.3), tusk_colour)
+
 	var legs: Array[Node3D] = []
 	var offsets := [
 		Vector3(width * 0.32, leg_length, -length * 0.32),

@@ -16,7 +16,12 @@ const Heightmap := preload("res://scripts/world/heightmap.gd")
 ## A cap rather than a density: the island is a fixed size, so a number is easier to reason
 ## about than a rate, and it puts a hard ceiling on the per-frame cost. Per-species caps
 ## live in the species table beside the rest of what makes a species itself.
-const POPULATION := 60
+##
+## Set to the sum of every species' own cap (40 + 20 + 9 + 7 + 4), so a full population of
+## everything fits without any one species crowding another out of the places that are
+## left — the same reasoning that set deer's own cap below the old total. Raised from 60
+## when the boar was added; re-measure rather than assume the extra animals are free.
+const POPULATION := 80
 
 ## Attempts before giving up on placing one. Generous, since most cells are ocean.
 const MAX_ATTEMPTS := 8000

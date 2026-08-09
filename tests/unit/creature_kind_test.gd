@@ -167,3 +167,63 @@ func test_the_open_beach_holds_no_predators() -> void:
 		assert_false(CreatureKind.lives_in(kind, Biome.Kind.BEACH),
 				"%s spawns on the respawn beach" % CreatureKind.name_of(kind))
 		assert_false(CreatureKind.lives_in(kind, Biome.Kind.OCEAN))
+
+
+func test_the_boar_is_a_gentle_step_up_from_a_deer() -> void:
+	var deer := CreatureKind.Kind.DEER
+	var boar := CreatureKind.Kind.BOAR
+	assert_true(CreatureKind.health(boar) > CreatureKind.health(deer),
+			"the fight has to be worth having")
+	# Well short of the real predators: this is an intro to danger, not the danger.
+	assert_true(CreatureKind.health(boar) < CreatureKind.health(CreatureKind.Kind.LEOPARD))
+	assert_true(CreatureKind.attack_damage(boar) > 0.0,
+			"a retaliating boar has to actually be able to hit you")
+	assert_true(CreatureKind.attack_damage(boar)
+					< CreatureKind.attack_damage(CreatureKind.Kind.LEOPARD),
+			"survivable, not as dangerous as a real predator")
+
+
+func test_the_boar_yields_more_than_a_deer() -> void:
+	const ItemKind := preload("res://scripts/items/item_kind.gd")
+	var deer_drops := CreatureKind.drops(CreatureKind.Kind.DEER)
+	var boar_drops := CreatureKind.drops(CreatureKind.Kind.BOAR)
+	assert_true(int(boar_drops.get(ItemKind.Kind.RAW_MEAT, 0))
+					> int(deer_drops.get(ItemKind.Kind.RAW_MEAT, 0)),
+			"the risk of a counter-attack has to pay for itself")
+
+
+func test_the_boar_is_denser_in_forest_than_the_deer_is() -> void:
+	const Biome := preload("res://scripts/world/biome.gd")
+	assert_true(CreatureKind.biome_weight(CreatureKind.Kind.BOAR, Biome.Kind.FOREST)
+					> CreatureKind.biome_weight(CreatureKind.Kind.DEER, Biome.Kind.FOREST))
+	assert_true(CreatureKind.lives_in(CreatureKind.Kind.BOAR, Biome.Kind.PLAINS))
+	assert_true(CreatureKind.lives_in(CreatureKind.Kind.BOAR, Biome.Kind.FOREST))
+	assert_false(CreatureKind.lives_in(CreatureKind.Kind.BOAR, Biome.Kind.MOUNTAINS))
+
+
+func test_only_the_boar_retaliates_among_the_ground_animals() -> void:
+	for kind in CreatureKind.ALL:
+		var expected := kind == CreatureKind.Kind.BOAR
+		assert_eq(CreatureKind.retaliates(kind), expected,
+				"%s should%s retaliate" % [CreatureKind.name_of(kind),
+						"" if expected else " not"])
+
+
+func test_the_boar_is_visually_distinct_from_the_deer() -> void:
+	# "Stockier, darker, lower to the ground" as three separate, checkable claims.
+	var deer_body := CreatureKind.body(CreatureKind.Kind.DEER)
+	var boar_body := CreatureKind.body(CreatureKind.Kind.BOAR)
+
+	assert_true(float(boar_body["width"]) > float(deer_body["width"]),
+			"stockier: wider relative to its length")
+	assert_true(float(boar_body["height"]) < float(deer_body["height"]),
+			"lower to the ground: shorter than the deer")
+
+	var deer_colour: Color = deer_body["body_colour"]
+	var boar_colour: Color = boar_body["body_colour"]
+	var difference := absf(deer_colour.r - boar_colour.r) \
+			+ absf(deer_colour.g - boar_colour.g) + absf(deer_colour.b - boar_colour.b)
+	assert_true(difference > 0.3, "darker: a real colour difference, not a token one")
+	assert_true(boar_colour.r + boar_colour.g + boar_colour.b
+					< deer_colour.r + deer_colour.g + deer_colour.b,
+			"specifically darker, not just different")

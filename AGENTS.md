@@ -95,6 +95,19 @@ adding 60 deer without it put the 1% low *below* the 60 FPS target while the ave
 read 160+. See `docs/performance.md`. Never assume a new species is free — measure across
 several runs after adding one.
 
+**One prey brain, not one per species.** `PreyBrain` is shared by every prey animal;
+whether an individual species ever fights back is a constructor flag
+(`CreatureKind.retaliates`), not a second brain or a branch in the body. The boar reuses
+the whole file unchanged — same states, same senses, same `is_attacking()`/`is_running()`
+the body already knew how to ask a predator. Adding a seventh species that behaves
+differently again should extend this pattern (a flag the existing brain reads) before
+reaching for a new state machine.
+
+**A total population cap should equal the sum of every species' own cap.** Setting it
+lower makes species compete for places that should have been theirs; the boar ticket
+raised `POPULATION` in `creatures.gd` from 60 to 80 for exactly this reason when its own
+20-strong cap had nowhere to fit in the old total.
+
 ### Procedural audio has to be built once, not per play
 
 `scripts/audio/procedural_audio.gd` synthesises every sound sample by sample — there are

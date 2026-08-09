@@ -254,3 +254,166 @@ func test_a_deer_keeps_running_until_well_clear_of_a_leopard() -> void:
 	for _i in 30:
 		brain.tick(0.2, _with_predator(_calm(), DETECTION * 4.0))
 	assert_ne(brain.state_name(), "flee", "but it does calm down eventually")
+
+
+## A brain for a species that turns and fights, seeded the same way `_brain()` is.
+func _retaliating_brain(seed_value: int = 7) -> RefCounted:
+	return Brain.new(seed_value, true)
+
+
+## A context reporting a strike from the player, at the given distance along +X.
+func _struck_by_player(distance: float) -> Dictionary:
+	return {
+		"position": Vector3.ZERO,
+		"threat_position": Vector3(distance, 0.0, 0.0),
+		"threat_present": true,
+		"threat_crouching": false,
+		"detection_m": 100000.0,
+		"made_progress": true,
+		"struck": true,
+	}
+
+
+func test_boar_is_defined_as_a_retaliating_prey_species() -> void:
+	assert_eq(CreatureKind.name_of(CreatureKind.Kind.BOAR), "boar")
+	assert_eq(CreatureKind.role(CreatureKind.Kind.BOAR), CreatureKind.Role.PREY)
+	assert_true(CreatureKind.retaliates(CreatureKind.Kind.BOAR))
+	assert_false(CreatureKind.retaliates(CreatureKind.Kind.DEER),
+			"a deer must never turn and fight")
+
+
+func test_a_non_retaliating_animal_ignores_being_struck() -> void:
+	# A deer that turned to fight when hit would not be a deer any more.
+	var brain := _brain()
+	brain.tick(0.1, _struck_by_player(5.0))
+	assert_ne(brain.state_name(), "retaliate")
+	assert_true(brain.is_fleeing(), "it should just be panicked, same as any other hit")
+
+
+func test_a_struck_boar_retaliates_immediately() -> void:
+	# The other half of "cornered, or has been struck": a hit alone is enough, with no
+	# stuck timer required at all.
+	var brain := _retaliating_brain()
+	brain.tick(0.1, _struck_by_player(5.0))
+	assert_eq(brain.state_name(), "retaliate")
+	assert_almost_eq(brain.desired_direction().x, 1.0, 0.001,
+			"it should turn towards the player at +X, not flee from them")
+
+
+func test_a_boar_struck_by_a_predator_does_not_retaliate() -> void:
+	# Scope is the player only: a boar mauled by a leopard should run from the leopard,
+	# not turn and fight an animal three times its size.
+	var brain := _retaliating_brain()
+	var context := _struck_by_player(5.0)
+	context["struck"] = false
+	context["threat_present"] = false
+	context["predator_position"] = Vector3(5.0, 0.0, 0.0)
+	context["predator_present"] = true
+	brain.tick(0.1, context)
+	assert_ne(brain.state_name(), "retaliate")
+	assert_true(brain.is_fleeing())
+
+
+func test_a_cornered_boar_turns_to_fight() -> void:
+	# "Cornered" without ever being struck: fleeing the player and making no progress
+	# for long enough is what tells the brain there is nowhere left to run.
+	var brain := _retaliating_brain()
+	brain.tick(0.1, _threatened(15.0))
+	assert_eq(brain.state_name(), "flee")
+
+	var blocked := _threatened(15.0)
+	blocked["made_progress"] = false
+	for _i in int(Brain.STUCK_SECONDS / 0.1) + 2:
+		brain.tick(0.1, blocked)
+	assert_eq(brain.state_name(), "retaliate",
+			"a boar stuck while fleeing the player should turn and fight")
+
+
+func test_a_boar_cornered_by_a_predator_does_not_retaliate() -> void:
+	# The same stuck timer, but fleeing a leopard rather than the player — out of scope
+	# for this behaviour, so it should keep trying to flee rather than turn on the cat.
+	var brain := _retaliating_brain()
+	var fleeing := _with_predator(_calm(), 15.0)
+	brain.tick(0.1, fleeing)
+	assert_eq(brain.state_name(), "flee")
+
+	var blocked := _with_predator(_calm(), 15.0)
+	blocked["made_progress"] = false
+	for _i in int(Brain.STUCK_SECONDS / 0.1) + 2:
+		brain.tick(0.1, blocked)
+	assert_eq(brain.state_name(), "flee",
+			"retaliation is scoped to the player, not to predators")
+
+
+func test_a_non_retaliating_animal_never_gets_cornered_into_fighting() -> void:
+	var brain := _brain()
+	brain.tick(0.1, _threatened(15.0))
+	var blocked := _threatened(15.0)
+	blocked["made_progress"] = false
+	for _i in int(Brain.STUCK_SECONDS / 0.1) + 2:
+		brain.tick(0.1, blocked)
+	assert_ne(brain.state_name(), "retaliate")
+	assert_true(brain.is_fleeing(), "a deer that cannot outrun the player just keeps trying")
+
+
+func test_retaliation_closes_the_distance_before_striking() -> void:
+	var brain := _retaliating_brain()
+	brain.tick(0.1, _struck_by_player(Brain.RETALIATE_RANGE_M * 3.0))
+	assert_almost_eq(brain.desired_direction().x, 1.0, 0.001,
+			"out of range, it should be closing in")
+	assert_false(brain.is_attacking(), "and not yet landing anything")
+	assert_true(brain.is_running(), "closing the distance is still a run")
+
+
+func test_retaliation_holds_and_strikes_once_in_range() -> void:
+	var brain := _retaliating_brain()
+	brain.tick(0.1, _struck_by_player(Brain.RETALIATE_RANGE_M * 0.5))
+	assert_almost_eq(brain.desired_direction().length(), 0.0, 0.001,
+			"braced to strike, not still closing")
+	assert_true(brain.is_attacking())
+
+
+func test_retaliation_breaks_off_once_the_player_is_well_clear() -> void:
+	var brain := _retaliating_brain()
+	brain.tick(0.1, _struck_by_player(1.0))
+	assert_eq(brain.state_name(), "retaliate")
+
+	# Still within the release margin of turning to fight again — must not have calmed.
+	var clear_distance := DETECTION * Brain.FLEE_RELEASE_MULTIPLIER
+	brain.tick(0.1, _threatened(clear_distance * 0.8))
+	assert_eq(brain.state_name(), "retaliate", "not clear yet")
+
+	brain.tick(0.1, _threatened(clear_distance * 1.5))
+	assert_eq(brain.state_name(), "flee",
+			"well clear, it should break off — still rattled, not instantly calm")
+
+
+func test_a_boar_calms_down_after_breaking_off_a_fight() -> void:
+	# The whole promise of the ticket: a fight the player can choose to walk away from,
+	# not one that never really ends.
+	var brain := _retaliating_brain()
+	brain.tick(0.1, _struck_by_player(1.0))
+	brain.tick(0.1, _threatened(DETECTION * Brain.FLEE_RELEASE_MULTIPLIER * 1.5))
+	assert_eq(brain.state_name(), "flee")
+
+	brain.tick(Brain.FLEE_TAIL_SECONDS + 1.0, _calm())
+	assert_false(brain.is_fleeing(), "and it should eventually settle, same as any flee")
+
+
+func test_retaliation_ends_if_the_player_is_gone() -> void:
+	var brain := _retaliating_brain()
+	brain.tick(0.1, _struck_by_player(1.0))
+	assert_eq(brain.state_name(), "retaliate")
+	brain.tick(0.1, _calm())
+	assert_ne(brain.state_name(), "retaliate",
+			"nothing to fight, so it should not still be braced")
+
+
+func test_being_struck_interrupts_a_boar_mid_retaliation() -> void:
+	# A wounded predator disengages mid-swing; a boar being hit again should not have to
+	# finish whatever it was doing first either.
+	var brain := _retaliating_brain()
+	brain.tick(0.1, _struck_by_player(Brain.RETALIATE_RANGE_M * 3.0))
+	assert_false(brain.is_attacking())
+	brain.tick(0.1, _struck_by_player(0.5))
+	assert_true(brain.is_attacking(), "a second, closer strike should still register")

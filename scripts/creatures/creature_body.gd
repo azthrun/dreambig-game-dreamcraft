@@ -83,9 +83,11 @@ func configure(p_kind: int, map: RefCounted, player: Node3D,
 	_registry = registry
 	if _registry != null:
 		_registry.add(get_instance_id(), p_kind, global_position, self)
-	# Role picks the brain, not species, so the next four animals need no new wiring.
+	# Role picks the brain, not species, so a new animal needs no new wiring — even one
+	# like the boar that behaves a little differently, since that difference is a flag
+	# on the species table rather than a branch here.
 	_brain = PredatorBrain.new(seed_value) if CreatureKind.is_predator(p_kind) \
-			else PreyBrain.new(seed_value)
+			else PreyBrain.new(seed_value, CreatureKind.retaliates(p_kind))
 	_anchor = global_position
 
 	collision_layer = CREATURE_LAYER
@@ -170,6 +172,12 @@ func take_damage(amount: float, from: Vector3 = Vector3.INF) -> void:
 			## Struck animals always notice, whatever the range.
 			"detection_m": 100000.0,
 			"made_progress": true,
+			## A retaliating species turns and fights the instant it is hit, rather
+			## than only when it happens to be cornered. Distinct from
+			## `threat_present`, which a predator's strike also sets to false — a boar
+			## mauled by a leopard should run from the leopard, not turn on the player
+			## who is not there.
+			"struck": struck_by_player,
 		})
 
 	if is_dead():

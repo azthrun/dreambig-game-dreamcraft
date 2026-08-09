@@ -1,5 +1,6 @@
 extends RefCounted
-## What a prey animal decides to do: graze, wander, or run.
+## What a prey animal decides to do: graze, wander, run, or — for a species that can —
+## turn and fight.
 ##
 ## Pure of Node and SceneTree. It is given a picture of the world each tick — where it is,
 ## where the threat is, whether it is stuck — and returns a state and a direction. The
@@ -8,10 +9,15 @@ extends RefCounted
 ## Keeping the decision separate from the movement is what makes an entirely behavioural
 ## feature testable: a whole minute of grazing, panicking and calming down is simulated by
 ## injecting deltas, with no scene and no animal.
+##
+## Every prey species shares this one brain, retaliation included. Whether it ever
+## actually retaliates is a constructor flag read from the species table
+## (`CreatureKind.retaliates`), not a second brain — a deer and a boar ask the same
+## questions and only differ in what they do with the answer.
 
 const Senses := preload("res://scripts/creatures/senses.gd")
 
-enum State { GRAZE, WANDER, FLEE }
+enum State { GRAZE, WANDER, FLEE, RETALIATE }
 
 ## How long a bout of grazing or wandering lasts before re-rolling.
 const GRAZE_SECONDS := Vector2(3.0, 9.0)
@@ -32,8 +38,13 @@ const FLEE_TAIL_SECONDS := 2.2
 ## payoff of crouch, so it is a large factor rather than a token one.
 const CROUCH_DETECTION_FACTOR := 0.45
 
-## Re-roll the wander direction after this long with no progress.
+## Re-roll the wander direction after this long with no progress. For a retaliating
+## species this is also what "cornered" means: fleeing without making progress this
+## long is what tells the brain there is nowhere left to run.
 const STUCK_SECONDS := 1.2
+
+## How close a retaliating animal has to be before it stops closing and starts striking.
+const RETALIATE_RANGE_M := 2.2
 
 var _state := State.GRAZE
 var _timer := 0.0
@@ -42,9 +53,14 @@ var _direction := Vector3.ZERO
 var _stuck_for := 0.0
 var _rng := RandomNumberGenerator.new()
 
+## Whether this species turns and fights at all. False makes every retaliation branch
+## below unreachable, which is what makes a deer a deer and a boar a boar off one flag.
+var _can_retaliate := false
 
-func _init(seed_value: int = 0) -> void:
+
+func _init(seed_value: int = 0, can_retaliate: bool = false) -> void:
 	_rng.seed = seed_value
+	_can_retaliate = can_retaliate
 	_enter(State.GRAZE)
 
 
@@ -60,16 +76,32 @@ func state_name() -> String:
 			return "wander"
 		State.FLEE:
 			return "flee"
+		State.RETALIATE:
+			return "retaliate"
 	return "unknown"
 
 
-## Unit vector the body should move along. Zero while grazing.
+## Unit vector the body should move along. Zero while grazing or while braced to strike.
 func desired_direction() -> Vector3:
 	return _direction
 
 
 func is_fleeing() -> bool:
 	return _state == State.FLEE
+
+
+## True while close enough to land a strike. The body applies its own damage and
+## cooldown from the species table, the same way it does for a predator — this only
+## says when a hit should land.
+func is_attacking() -> bool:
+	return _state == State.RETALIATE and _direction.length_squared() < 0.0001
+
+
+## Fleeing and closing to retaliate are both a run; only grazing, wandering and bracing
+## to strike are not. The body asks this before `is_fleeing()` for gait, so a charging
+## boar plays its run clip rather than its walk.
+func is_running() -> bool:
+	return _state == State.FLEE or _state == State.RETALIATE
 
 
 ## Range at which this animal notices a threat, given how the threat is moving.
@@ -80,7 +112,7 @@ static func detection_range(base_m: float, crouching: bool) -> float:
 ## Advances the decision.
 ##
 ## `context` carries: position, threat_position, threat_present, threat_crouching,
-## predator_position, predator_present, detection_m, and made_progress.
+## predator_position, predator_present, detection_m, made_progress, and struck.
 ##
 ## Two things are worth running from and the nearer one wins. A deer that only ever
 ## watched the player would graze while a leopard closed on it, which would make the
@@ -92,6 +124,21 @@ func tick(delta: float, context: Dictionary) -> void:
 	_update_stuck(delta, context)
 
 	var position: Vector3 = context.get("position", Vector3.ZERO)
+
+	# Struck by the player: a retaliating species turns and fights on the spot, whatever
+	# state it was in a moment ago — including mid-swing of its own. Checked before
+	# anything else, the same way a predator's wound check pre-empts its own states.
+	if _can_retaliate and bool(context.get("struck", false)):
+		var struck_at: Vector3 = context.get("threat_position", Vector3.ZERO)
+		_enter(State.RETALIATE)
+		_direction = Vector3.ZERO if position.distance_to(struck_at) <= RETALIATE_RANGE_M \
+				else _towards(position, struck_at)
+		return
+
+	if _state == State.RETALIATE:
+		_tick_retaliate(position, context)
+		return
+
 	var base_detection: float = float(context.get("detection_m", 20.0))
 	var candidates: Array = [
 		{
@@ -121,6 +168,16 @@ func tick(delta: float, context: Dictionary) -> void:
 	var distance := position.distance_to(threat) if threat_present else INF
 
 	if pick != Senses.NOTHING:
+		# Cornered: already fleeing the player specifically (index 0 — a predator does
+		# not draw retaliation, only the player does) and making no progress for long
+		# enough that there is evidently nowhere left to run.
+		if _can_retaliate and pick == 0 and _state == State.FLEE \
+				and _stuck_for >= STUCK_SECONDS:
+			_enter(State.RETALIATE)
+			_direction = Vector3.ZERO if distance <= RETALIATE_RANGE_M \
+					else _towards(position, threat)
+			return
+
 		_flee_tail = FLEE_TAIL_SECONDS
 		if _state != State.FLEE:
 			_enter(State.FLEE)
@@ -143,6 +200,48 @@ func tick(delta: float, context: Dictionary) -> void:
 	_timer -= delta
 	if _timer <= 0.0:
 		_enter(State.WANDER if _state == State.GRAZE else State.GRAZE)
+
+
+## Closes on the player while out of strike range, holds and strikes once inside it, and
+## breaks off — back to fleeing, still rattled rather than instantly calm — once the
+## player is gone or has pulled well clear. Nothing here ever targets a predator: scope
+## is deliberately just the player, per the ticket this behaviour was built for.
+func _tick_retaliate(position: Vector3, context: Dictionary) -> void:
+	var present: bool = bool(context.get("threat_present", false))
+	if not present:
+		_enter(State.FLEE)
+		return
+
+	var threat: Vector3 = context.get("threat_position", Vector3.ZERO)
+	var distance := position.distance_to(threat)
+
+	# The same release margin fleeing already uses, not a fixed distance: a fixed
+	# number small enough to matter at melee range would be smaller than the distance
+	# a boar had just closed from to get cornered in the first place, breaking off the
+	# charge the instant it began. Scaling with detection means a boar shot from far
+	# outside it simply cannot catch up and gives up on its own, which is correct — a
+	# rifle round from fifty metres should not summon a dead sprint across the island.
+	var detection: float = float(context.get("detection_m", 20.0))
+	if distance > detection * FLEE_RELEASE_MULTIPLIER:
+		_enter(State.FLEE)
+		# Set immediately rather than left for the next tick to discover: otherwise a
+		# boar that had just broken off would stand still, direction still zero from
+		# the moment it was in strike range, for one whole decision interval.
+		_direction = _away_from(position, threat)
+		return
+
+	_direction = Vector3.ZERO if distance <= RETALIATE_RANGE_M \
+			else _towards(position, threat)
+
+
+## Direction towards a target, kept horizontal. The mirror of `_away_from`, needed once
+## retaliation means closing distance rather than only opening it.
+func _towards(position: Vector3, target: Vector3) -> Vector3:
+	var to := target - position
+	to.y = 0.0
+	if to.length_squared() < 0.0001:
+		return _random_direction()
+	return to.normalized()
 
 
 ## Nearest candidate that exists at all, detected or not. Falls back to the first, which
@@ -176,8 +275,13 @@ func _update_stuck(delta: float, context: Dictionary) -> void:
 		_stuck_for = 0.0
 		return
 	_stuck_for += delta
-	if _stuck_for >= STUCK_SECONDS:
-		# Wedged against a rock or a cliff: pick somewhere else rather than pressing on.
+
+	# Wedged against a rock or a cliff: pick somewhere else rather than pressing on.
+	# Not while fleeing — FLEE's direction is recomputed fresh from the threat's
+	# position every tick regardless of this, so resetting the counter here would only
+	# ever discard it before `tick()`'s own cornered check (a retaliating species) gets
+	# to read it. Nothing in FLEE needs the reroll; only WANDER does.
+	if _stuck_for >= STUCK_SECONDS and _state != State.FLEE:
 		_stuck_for = 0.0
 		_direction = _random_direction()
 

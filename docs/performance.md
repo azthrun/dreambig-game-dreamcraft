@@ -278,6 +278,33 @@ would not reduce the total work, only stop it blocking the frame. At ~2.3 s of o
 startup this has not been done, because it would add concurrency to a system that
 currently has none for no gain a player would notice.
 
+## Measured result — the boar, and a 60 → 80 population cap (2026-08-01)
+
+The boar is a sixth entry in the species table, reusing `PreyBrain` entirely — no new
+per-frame work of its own beyond what a deer already costs. The number actually being
+measured here is the **population cap rise from 60 to 80** (see `docs/agents` note in
+`AGENTS.md`: the cap should equal the sum of every species' own cap, and the boar's
+20-strong cap had nowhere to fit in the old total), a third more animals than any
+previous reading.
+
+Five interleaved pairs against the parent commit:
+
+| Pair | Branch 1% low | Parent 1% low |
+|---|---|---|
+| 1 | 82.2 | 110.0 |
+| 2 | 81.7 | 120.0 |
+| 3 | 131.6 | 102.9 |
+| 4 | 91.4 | 58.1 |
+| 5 | 60.0 | 62.3 |
+
+Noisier than earlier tickets and without a consistent direction — branch reads lower in
+three pairs, higher in one, and about even in one. Read as overlapping rather than as a
+regression, per this document's own standing rule, but **the margin above 60 FPS is
+visibly thinner than it was** (pair 5 sits right at the target on both sides). 80 is not
+yet a problem; it is the first reading since dormancy landed where "add another species"
+stopped being obviously free. The next population increase should not assume the same
+comfortable headroom this project started with.
+
 ## Headroom, and why not to spend it yet
 
 The obvious lever for better-looking terrain is `CELL_SIZE_M` in

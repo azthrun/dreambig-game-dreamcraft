@@ -2,8 +2,8 @@ extends RefCounted
 ## Every species, and the numbers that make one different from another.
 ##
 ## One table, so a creature's speed, health, drops and where it lives are stated once.
-## The five ground animals share a body plan and differ only by these values, which is
-## what makes adding the next one an entry rather than a new file.
+## The ground animals share a body plan and differ only by these values, which is what
+## makes adding the next one an entry rather than a new file.
 
 const Biome := preload("res://scripts/world/biome.gd")
 const ItemKind := preload("res://scripts/items/item_kind.gd")
@@ -54,6 +54,55 @@ const SPECIES := {
 		"gait": {
 			"walk_swing": 24.0, "run_swing": 46.0,
 			"walk_cycle": 0.82, "run_cycle": 0.38,
+		},
+	},
+	Kind.BOAR: {
+		"name": "boar",
+		"role": Role.PREY,
+		## Enough more than a deer's 30 that the fight is worth having, well short of a
+		## leopard's 55 — this is a gentle intro to danger, not the real thing.
+		"health": 42.0,
+		"walk_speed": 2.0,
+		"run_speed": 7.6,
+		## Less flighty than a deer: it does not notice you from quite as far.
+		"detection_m": 21.0,
+		## Read only while retaliating — see `retaliates` below. Deliberately mild: a
+		## boar has to be survivable to fight, or "gentle intro to danger" is a lie.
+		"attack_damage": 8.0,
+		"attack_interval": 1.6,
+		## The one thing that makes this species different from a deer mechanically:
+		## cornered or struck, it turns and fights instead of only running. Read by
+		## `PreyBrain`, which every other prey animal shares unchanged.
+		"retaliates": true,
+		"body": {
+			## Lower to the ground and stockier than the deer it stands beside —
+			## shorter, wider, and noticeably heavier-looking despite the smaller frame.
+			"height": 1.05, "length": 1.55, "width": 0.92,
+			## Dark rather than tan: nothing else on the island reads this close to
+			## black, which is what tells it apart from a deer at a glance before the
+			## proportions do.
+			"body_colour": Color(0.20, 0.15, 0.11),
+			"head_colour": Color(0.16, 0.12, 0.09),
+			"leg_colour": Color(0.10, 0.08, 0.06),
+			## A pair of tusks are the one feature the deer has nothing like, so a boar
+			## reads as a boar head-on — which is exactly the angle a player sees it
+			## from once it turns to fight.
+			"tusks": true,
+			"tusk_colour": Color(0.88, 0.85, 0.76),
+		},
+		## Double the deer's, so a hunt that risks a counter-attack pays for the risk.
+		"drops": {ItemKind.Kind.RAW_MEAT: 4, ItemKind.Kind.HIDE: 2},
+		## Forest first — denser there than the deer's own 0.7 — with plains too, so
+		## the two prey species overlap rather than sorting the island between them.
+		"biomes": {
+			Biome.Kind.PLAINS: 0.6,
+			Biome.Kind.FOREST: 0.9,
+		},
+		"max_population": 20,
+		## Heavier tread than the deer: shorter swing, slower cycle.
+		"gait": {
+			"walk_swing": 19.0, "run_swing": 38.0,
+			"walk_cycle": 0.95, "run_cycle": 0.44,
 		},
 	},
 	Kind.LEOPARD: {
@@ -162,7 +211,7 @@ const SPECIES := {
 }
 
 ## Order matters only for reporting; spawn weighting reads the table, not this list.
-const ALL: Array[int] = [Kind.DEER, Kind.LEOPARD, Kind.TIGER, Kind.LION]
+const ALL: Array[int] = [Kind.DEER, Kind.BOAR, Kind.LEOPARD, Kind.TIGER, Kind.LION]
 
 
 static func data(kind: int) -> Dictionary:
@@ -205,6 +254,13 @@ static func attack_interval(kind: int) -> float:
 
 static func is_predator(kind: int) -> bool:
 	return role(kind) == Role.PREDATOR
+
+
+## Whether this prey species turns and fights when cornered or struck, instead of only
+## ever running. Meaningless for a predator, which always fights — read only by
+## `PreyBrain`.
+static func retaliates(kind: int) -> bool:
+	return bool(data(kind).get("retaliates", false))
 
 
 static func body(kind: int) -> Dictionary:
