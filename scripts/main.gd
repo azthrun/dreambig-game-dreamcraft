@@ -1,9 +1,14 @@
 extends Node3D
-## Scaffold smoke scene.
+## The game's single scene: boot report, world, and shell.
 ##
 ## Confirms the project boots with the intended engine configuration and that the
-## input map is fully registered. This scene is a placeholder: ticket #3 replaces
-## it with the generated island.
+## input map is fully registered, then shows the main menu. World population (props,
+## creatures, the player) is deferred until New Game or Continue is chosen in
+## `_begin_game`, rather than happening unconditionally in `_ready`, so a session never
+## starts before the player has asked for one. Returning to the main menu reloads this
+## scene outright (`_on_return_to_main_menu_requested`) rather than resetting state
+## field by field, which is what guarantees a second session never inherits anything
+## from the first.
 
 ## Every action the input map is expected to declare. Kept here so a missing or
 ## renamed action fails loudly at boot rather than silently doing nothing when a
@@ -38,6 +43,7 @@ const Config := preload("res://scripts/config.gd")
 const Spawn := preload("res://scripts/world/spawn.gd")
 const PerfProbe := preload("res://scripts/perf_probe.gd")
 const ScreenshotProbe := preload("res://scripts/screenshot_probe.gd")
+const SaveManager := preload("res://scripts/persistence/save_manager.gd")
 
 ## Height above the terrace the player is dropped from, so they settle onto the
 ## surface under gravity rather than starting embedded in it.
@@ -46,25 +52,113 @@ const SPAWN_CLEARANCE_M := 1.5
 ## Collected while placing the player, since creatures are spawned in that pass.
 var _creature_lines := PackedStringArray()
 
+## The boot report, captured once in `_ready` and reused as the base for `_begin_game`'s
+## fuller report once a session actually starts.
+var _boot_lines := PackedStringArray()
+
 
 func _ready() -> void:
 	var missing := missing_actions()
-	var lines := report_lines(missing)
+	_boot_lines = report_lines(missing)
 
 	_configure_view()
 
 	var terrain := get_node_or_null(^"Terrain")
 	if terrain != null:
-		lines.append_array(terrain.stat_lines())
-		lines.append_array(_populate_props(terrain))
-		lines.append(_place_player(terrain))
-		lines.append_array(_creature_lines)
+		_boot_lines.append_array(terrain.stat_lines())
 
+	for line in _boot_lines:
+		print(line)
+	if not missing.is_empty():
+		push_error("Input map incomplete, missing: %s" % ", ".join(missing))
+
+	_wire_menus()
+
+	var args := OS.get_cmdline_user_args()
+	if args.has("--perf"):
+		_begin_game(false)
+		_start_perf_probe()
+	elif args.has("--screenshot"):
+		_begin_game(false)
+		_start_screenshot_probe(args)
+	else:
+		var menu := get_node_or_null(^"UI/MainMenuScreen")
+		if menu != null and menu.has_method(&"open"):
+			menu.open()
+		else:
+			# No menu wired (a stripped-down scene, say) - fall back to the old
+			# behaviour of starting straight into a fresh game.
+			_begin_game(false)
+
+
+## Connects the main menu and pause screen to the actions only `main.gd` can carry out:
+## starting, saving, and tearing down a session.
+func _wire_menus() -> void:
+	var menu := get_node_or_null(^"UI/MainMenuScreen")
+	var pause := get_node_or_null(^"UI/PauseScreen")
+	var inventory := get_node_or_null(^"UI/InventoryScreen")
+	var crafting := get_node_or_null(^"UI/CraftingScreen")
+
+	if pause != null:
+		if pause.has_method(&"bind"):
+			pause.bind(inventory, crafting)
+		pause.resume_requested.connect(_on_resume_requested)
+		pause.save_requested.connect(_on_save_requested)
+		pause.main_menu_requested.connect(_on_return_to_main_menu_requested)
+
+	if menu != null:
+		menu.new_game_requested.connect(_on_new_game_requested)
+		menu.continue_requested.connect(_on_continue_requested)
+		menu.quit_requested.connect(_on_quit_requested)
+
+
+func _on_new_game_requested() -> void:
+	SaveManager.delete_save()
+	_begin_game(false)
+
+
+func _on_continue_requested() -> void:
+	_begin_game(true)
+
+
+func _on_quit_requested() -> void:
+	get_tree().quit()
+
+
+func _on_resume_requested() -> void:
+	var pause := get_node_or_null(^"UI/PauseScreen")
+	if pause != null:
+		pause.close()
+
+
+func _on_save_requested() -> void:
+	_save_game()
+
+
+func _on_return_to_main_menu_requested() -> void:
+	# A full scene reload rather than resetting fields one at a time: it is the only
+	# way to guarantee nothing from the previous session - inventory, campfires,
+	# looted caches, hunger - survives into the next, since every node is freed and
+	# rebuilt from scratch rather than mutated back towards defaults.
+	get_tree().paused = false
+	get_tree().reload_current_scene()
+
+
+## Builds the props, places the player, spawns creatures, and - when `load_save` is
+## true - restores a save on top of that freshly built world. Shared by New Game,
+## Continue, and the `--perf`/`--screenshot` probes, which skip the menu entirely.
+func _begin_game(load_save: bool) -> void:
+	var terrain := get_node_or_null(^"Terrain")
+	if terrain == null:
+		return
+
+	var lines := _boot_lines.duplicate()
+	lines.append_array(_populate_props(terrain))
+	lines.append(_place_player(terrain))
+	lines.append_array(_creature_lines)
 	for line in lines:
 		print(line)
 
-	# Sky and weather are live, so the overlay re-reads them each frame rather than
-	# being handed a snapshot that goes stale the moment it is drawn.
 	var label := get_node_or_null(^"UI/BootLabel")
 	if label != null and label.has_method(&"configure"):
 		var sources: Array[Node] = []
@@ -75,14 +169,44 @@ func _ready() -> void:
 				sources.append(node)
 		label.configure(lines, sources)
 
-	if not missing.is_empty():
-		push_error("Input map incomplete, missing: %s" % ", ".join(missing))
+	if load_save:
+		var save := SaveManager.read_file()
+		SaveManager.apply(save, terrain.world_seed, get_node_or_null(^"Sky"),
+				get_node_or_null(^"Weather"), get_node_or_null(^"Player"),
+				get_node_or_null(^"Props"), _item_placer(), get_node_or_null(^"Climate"))
 
-	var args := OS.get_cmdline_user_args()
-	if args.has("--perf"):
-		_start_perf_probe()
-	elif args.has("--screenshot"):
-		_start_screenshot_probe(args)
+	var menu := get_node_or_null(^"UI/MainMenuScreen")
+	if menu != null:
+		menu.close()
+
+	var pause := get_node_or_null(^"UI/PauseScreen")
+	if pause != null and pause.has_method(&"set_active"):
+		pause.set_active(true)
+
+	var player := get_node_or_null(^"Player")
+	if player != null and player.has_method(&"capture_mouse"):
+		player.capture_mouse()
+
+	get_tree().paused = false
+
+
+## Captures every live system into a `SaveData` and writes it to disk. Used by the
+## pause menu's Save option.
+func _save_game() -> void:
+	var terrain := get_node_or_null(^"Terrain")
+	if terrain == null:
+		return
+	var save := SaveManager.capture(terrain.world_seed, get_node_or_null(^"Sky"),
+			get_node_or_null(^"Weather"), get_node_or_null(^"Player"),
+			get_node_or_null(^"Props"), _item_placer())
+	SaveManager.write_file(save)
+
+
+func _item_placer() -> Node:
+	var player := get_node_or_null(^"Player")
+	if player == null or not player.has_method(&"item_placer"):
+		return null
+	return player.item_placer()
 
 
 ## Sets the far plane and distance fog from the configured budget, and matches the sky

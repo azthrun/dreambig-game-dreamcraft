@@ -353,12 +353,9 @@ func submerged() -> bool:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if event.is_action_pressed(&"pause"):
-		if mouse_captured():
-			release_mouse()
-		else:
-			capture_mouse()
-		return
+	# Pause is owned by PauseScreen (res://scripts/ui/pause_screen.gd), which consumes
+	# the action itself and releases/captures the mouse around suspending gameplay - it
+	# never reaches here while that screen exists in the scene.
 
 	# Clicking back into the window recaptures, so the player is not stuck with a
 	# free cursor after alt-tabbing.

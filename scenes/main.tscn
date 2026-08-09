@@ -13,6 +13,8 @@
 [ext_resource type="Script" path="res://scripts/ui/inventory_screen.gd" id="11_inv"]
 [ext_resource type="Script" path="res://scripts/ui/crafting_screen.gd" id="12_craft"]
 [ext_resource type="Script" path="res://scripts/world/creatures.gd" id="13_creatures"]
+[ext_resource type="Script" path="res://scripts/ui/pause_screen.gd" id="14_pause"]
+[ext_resource type="Script" path="res://scripts/ui/main_menu_screen.gd" id="15_menu"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_0wfyh"]
 
@@ -74,6 +76,12 @@ script = ExtResource("11_inv")
 
 [node name="CraftingScreen" type="Control" parent="UI"]
 script = ExtResource("12_craft")
+
+[node name="PauseScreen" type="Control" parent="UI"]
+script = ExtResource("14_pause")
+
+[node name="MainMenuScreen" type="Control" parent="UI"]
+script = ExtResource("15_menu")
 
 [node name="BootLabel" type="Label" parent="UI" unique_id=2070876947]
 script = ExtResource("7_overlay")
