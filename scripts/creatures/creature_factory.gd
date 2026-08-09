@@ -24,6 +24,13 @@ const RUN_SWING_DEGREES := 42.0
 const WALK_CYCLE_SECONDS := 0.9
 const RUN_CYCLE_SECONDS := 0.42
 
+## How far the wings flap in each clip. A wing animation set nothing else uses — see
+## SPEC — so these are plain constants rather than another per-species gait entry; there
+## is only the one flying species to tune them against.
+const WING_FLAP_IDLE_DEGREES := 8.0
+const WING_FLAP_WALK_DEGREES := 35.0
+const WING_FLAP_RUN_DEGREES := 60.0
+
 
 ## Builds the visual body under `parent` and returns the AnimationPlayer driving it.
 func build(parent: Node3D, kind: int) -> AnimationPlayer:
@@ -91,7 +98,34 @@ func build(parent: Node3D, kind: int) -> AnimationPlayer:
 				Vector3(width * 0.24, leg_length, width * 0.24), leg_colour)
 		legs.append(pivot)
 
-	return _build_animations(parent, legs, CreatureKind.gait(kind))
+	var wings: Array[Node3D] = []
+	if bool(shape.get("wings", false)):
+		wings = _build_wings(parent, torso_y, height, length, width, shape)
+
+	return _build_animations(parent, legs, wings, CreatureKind.gait(kind))
+
+
+## A pivot per side at shoulder height, each carrying one flat wing extending outward.
+## Rotating the pivot about its local Z swings the tip up and down, which is all the
+## animation a cuboid wing needs — the same "swing a limb from its pivot" trick the legs
+## already use, just about a different axis.
+func _build_wings(parent: Node3D, torso_y: float, height: float, length: float,
+		width: float, shape: Dictionary) -> Array[Node3D]:
+	var body_colour: Color = shape.get("body_colour", Color(0.5, 0.4, 0.3))
+	var wing_colour: Color = shape.get("wing_colour", body_colour.darkened(0.15))
+	var wing_y := torso_y + height * 0.16
+	var wing_length := length * 0.85
+	var wing_chord := width * 1.9
+
+	var wings: Array[Node3D] = []
+	for side in [1.0, -1.0]:
+		var pivot := Node3D.new()
+		pivot.position = Vector3(width * 0.48 * side, wing_y, 0.0)
+		parent.add_child(pivot)
+		_box(pivot, Vector3(wing_chord * 0.5 * side, 0.0, 0.0),
+				Vector3(wing_chord, height * 0.05, wing_length), wing_colour)
+		wings.append(pivot)
+	return wings
 
 
 ## Scattered spots, on the flanks and over the back.
@@ -139,28 +173,33 @@ func _stripes(parent: Node3D, torso_y: float, torso_height: float, length: float
 				Vector3(width * 0.86, 0.02, thickness), colour)
 
 
-func _build_animations(parent: Node3D, legs: Array[Node3D],
+func _build_animations(parent: Node3D, legs: Array[Node3D], wings: Array[Node3D],
 		gait: Dictionary) -> AnimationPlayer:
 	var player := AnimationPlayer.new()
 	player.name = "AnimationPlayer"
 	parent.add_child(player)
 
 	var library := AnimationLibrary.new()
-	library.add_animation(CLIP_IDLE, _clip(parent, legs, 0.0, 1.0))
-	library.add_animation(CLIP_WALK, _clip(parent, legs,
+	library.add_animation(CLIP_IDLE,
+			_clip(parent, legs, wings, 0.0, 1.0, WING_FLAP_IDLE_DEGREES))
+	library.add_animation(CLIP_WALK, _clip(parent, legs, wings,
 			float(gait.get("walk_swing", WALK_SWING_DEGREES)),
-			float(gait.get("walk_cycle", WALK_CYCLE_SECONDS))))
-	library.add_animation(CLIP_RUN, _clip(parent, legs,
+			float(gait.get("walk_cycle", WALK_CYCLE_SECONDS)),
+			WING_FLAP_WALK_DEGREES))
+	library.add_animation(CLIP_RUN, _clip(parent, legs, wings,
 			float(gait.get("run_swing", RUN_SWING_DEGREES)),
-			float(gait.get("run_cycle", RUN_CYCLE_SECONDS))))
+			float(gait.get("run_cycle", RUN_CYCLE_SECONDS)),
+			WING_FLAP_RUN_DEGREES))
 	player.add_animation_library("", library)
 	return player
 
 
 ## One gait. Diagonal legs swing together, which is what makes a four-legged walk read as
-## a walk rather than as a hopping table.
-func _clip(parent: Node3D, legs: Array[Node3D], swing_degrees: float,
-		seconds: float) -> Animation:
+## a walk rather than as a hopping table. Wings, where the species has them, share the
+## same clip length but flap in sync with each other rather than alternating — a wing
+## beat, not a stride.
+func _clip(parent: Node3D, legs: Array[Node3D], wings: Array[Node3D],
+		swing_degrees: float, seconds: float, wing_degrees: float = 0.0) -> Animation:
 	var clip := Animation.new()
 	clip.length = seconds
 	clip.loop_mode = Animation.LOOP_LINEAR
@@ -176,6 +215,17 @@ func _clip(parent: Node3D, legs: Array[Node3D], swing_degrees: float,
 		clip.track_insert_key(track, 0.0, swing)
 		clip.track_insert_key(track, seconds * 0.5, -swing)
 		clip.track_insert_key(track, seconds, swing)
+
+	for wing in wings:
+		var track := clip.add_track(Animation.TYPE_VALUE)
+		clip.track_set_path(track, "%s:rotation:z" % parent.get_path_to(wing))
+		clip.track_set_interpolation_type(track, Animation.INTERPOLATION_LINEAR)
+
+		var beat := deg_to_rad(wing_degrees)
+		clip.track_insert_key(track, 0.0, beat)
+		clip.track_insert_key(track, seconds * 0.5, -beat)
+		clip.track_insert_key(track, seconds, beat)
+
 	return clip
 
 

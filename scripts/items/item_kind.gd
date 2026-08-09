@@ -26,6 +26,7 @@ enum Kind {
 	MACHINE_GUN,
 	MACHINE_GUN_AMMO,
 	FLYING_SUIT,
+	DRAGON_SCALE,
 }
 
 ## Damage dealt swinging nothing at all. Enough to kill a deer eventually, so the game is
@@ -109,6 +110,9 @@ const ITEMS := {
 	## Equipping and refuelling are both the primary action, mirroring how armour is worn
 	## and a fire is fed — one verb per item type, not a second key.
 	Kind.FLYING_SUIT: {"name": "flying suit", "stack": 1, "nutrition": 0.0},
+	## Drops from the dragon and nothing else — see `creature_kind.gd`. The best material
+	## in the game is a statement about the drop table, not about a use for it yet.
+	Kind.DRAGON_SCALE: {"name": "dragon scale", "stack": 8, "nutrition": 0.0},
 }
 
 const ALL: Array[int] = [
@@ -128,6 +132,7 @@ const ALL: Array[int] = [
 	Kind.MACHINE_GUN,
 	Kind.MACHINE_GUN_AMMO,
 	Kind.FLYING_SUIT,
+	Kind.DRAGON_SCALE,
 ]
 
 

@@ -14,6 +14,7 @@ enum Kind {
 	LEOPARD,
 	TIGER,
 	LION,
+	DRAGON,
 }
 
 ## Prey flee; predators hunt. The brain is chosen from this rather than from the species,
@@ -208,10 +209,59 @@ const SPECIES := {
 			"walk_cycle": 1.12, "run_cycle": 0.56,
 		},
 	},
+	## The apex encounter, sequenced with the gadgets rather than with the rest of the
+	## bestiary — see SPEC. It never enters the general biome-weighted population roll:
+	## no `biomes` entry means `biome_weight` is zero everywhere, so this species is
+	## placed only by `dragon_nest.gd`, deliberately, at mountain sites in the island's
+	## north. `max_population` is read by that placement as how many nests to try for.
+	Kind.DRAGON: {
+		"name": "dragon",
+		"role": Role.PREDATOR,
+		## Far beyond the lion's 120: a fight meant to need firearms and flight, not a
+		## stone tool with more swings.
+		"health": 450.0,
+		## "walk" is the patrol cruise; "run" is the dive.
+		"walk_speed": 7.0,
+		"run_speed": 16.0,
+		## Spots the player from well past a lion's own 38 m — an apex flying predator
+		## sees further than anything grounded.
+		"detection_m": 70.0,
+		"attack_damage": 30.0,
+		"attack_interval": 1.6,
+		"body": {
+			## Substantially larger than the big cats in every dimension, not just
+			## scaled up — a lion standing beside this should look like prey.
+			"height": 3.2, "length": 7.5, "width": 2.4,
+			"body_colour": Color(0.16, 0.30, 0.20),
+			"head_colour": Color(0.12, 0.24, 0.16),
+			"leg_colour": Color(0.09, 0.17, 0.11),
+			## The one feature nothing else on the island has — see `creature_factory.gd`
+			## for the wing geometry and its own flap animation.
+			"wings": true,
+			"wing_colour": Color(0.11, 0.23, 0.15),
+		},
+		## The best drop table in the game: DRAGON_SCALE exists nowhere else, and every
+		## other yield is the largest of its kind — see the drop-table test.
+		"drops": {
+			ItemKind.Kind.DRAGON_SCALE: 6,
+			ItemKind.Kind.HIDE: 5,
+			ItemKind.Kind.RAW_MEAT: 10,
+		},
+		## One or two nests — see `dragon_nest.gd`, which reads this as how many sites to
+		## place rather than a population density.
+		"max_population": 2,
+		## Heavy and slow-legged on the ground; the wings are what do the actual moving.
+		"gait": {
+			"walk_swing": 14.0, "run_swing": 22.0,
+			"walk_cycle": 1.3, "run_cycle": 0.75,
+		},
+	},
 }
 
 ## Order matters only for reporting; spawn weighting reads the table, not this list.
-const ALL: Array[int] = [Kind.DEER, Kind.BOAR, Kind.LEOPARD, Kind.TIGER, Kind.LION]
+const ALL: Array[int] = [
+	Kind.DEER, Kind.BOAR, Kind.LEOPARD, Kind.TIGER, Kind.LION, Kind.DRAGON,
+]
 
 
 static func data(kind: int) -> Dictionary:
@@ -278,6 +328,10 @@ static func markings(kind: int) -> int:
 
 static func has_mane(kind: int) -> bool:
 	return bool(body(kind).get("mane", false))
+
+
+static func has_wings(kind: int) -> bool:
+	return bool(body(kind).get("wings", false))
 
 
 ## Swing angles and cycle times for this species' walk and run clips. A heavier animal

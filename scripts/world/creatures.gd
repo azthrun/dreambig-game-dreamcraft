@@ -7,9 +7,11 @@ extends Node3D
 
 const CreatureKind := preload("res://scripts/creatures/creature_kind.gd")
 const CreatureBody := preload("res://scripts/creatures/creature_body.gd")
+const DragonBody := preload("res://scripts/creatures/dragon_body.gd")
 const Population := preload("res://scripts/creatures/population.gd")
 const CreatureRegistry := preload("res://scripts/creatures/creature_registry.gd")
 const Heightmap := preload("res://scripts/world/heightmap.gd")
+const DragonNest := preload("res://scripts/world/dragon_nest.gd")
 
 ## Total animals on the island.
 ##
@@ -68,6 +70,15 @@ func populate(map: RefCounted, player: Node3D, seed_value: int) -> Dictionary:
 		population.record(kind)
 
 	_counts = population.counts()
+
+	# Outside the general roll on purpose — see `creature_kind.gd`. Nest sites are
+	# deliberate, not density, so they are placed and counted separately.
+	var nests := DragonNest.sites(
+			map, seed_value, CreatureKind.max_population(CreatureKind.Kind.DRAGON))
+	for nest_position in nests:
+		_spawn_dragon(nest_position, map, player, rng.randi())
+	_counts[CreatureKind.Kind.DRAGON] = nests.size()
+
 	return _counts
 
 
@@ -124,6 +135,18 @@ func _spawn(kind: int, map: RefCounted, player: Node3D, position: Vector3,
 	creature.rotation.y = yaw
 	creature.configure(kind, map, player, seed_value, _registry)
 	_creatures.append(creature)
+
+
+## A dragon at a chosen nest site, on the ground — it climbs to its patrol altitude
+## itself once it wakes, the same as any other creature waking from dormancy.
+func _spawn_dragon(position: Vector3, map: RefCounted, player: Node3D,
+		seed_value: int) -> void:
+	var dragon: Node3D = DragonBody.new()
+	dragon.name = "dragon_%d" % _creatures.size()
+	add_child(dragon)
+	dragon.global_position = position
+	dragon.configure(CreatureKind.Kind.DRAGON, map, player, seed_value, _registry)
+	_creatures.append(dragon)
 
 
 func _world_position(map: RefCounted, cx: int, cz: int) -> Vector3:
