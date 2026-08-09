@@ -226,8 +226,11 @@ const SPECIES := {
 		## Spots the player from well past a lion's own 38 m — an apex flying predator
 		## sees further than anything grounded.
 		"detection_m": 70.0,
-		"attack_damage": 30.0,
-		"attack_interval": 1.6,
+		## No `attack_damage`/`attack_interval` here: unlike every other predator, the
+		## dragon's strike is not the shared per-interval melee lump `CreatureBody`
+		## applies from this table. It breathes fire instead — a cone, a duration, and a
+		## cooldown of its own, defined in `dragon_brain.gd` and applied by
+		## `dragon_body.gd`'s own `_update_attack` override. See the fire-breath tests.
 		"body": {
 			## Substantially larger than the big cats in every dimension, not just
 			## scaled up — a lion standing beside this should look like prey.

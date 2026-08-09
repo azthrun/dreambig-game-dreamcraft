@@ -80,7 +80,15 @@ func test_dragon_scale_drops_from_nothing_else() -> void:
 						"" if expected else " not"])
 
 
-func test_the_dragon_hits_harder_and_further_than_the_lion() -> void:
-	assert_true(CreatureKind.attack_damage(DRAGON) > CreatureKind.attack_damage(LION))
+func test_the_dragon_sees_further_and_flies_faster_than_the_lion() -> void:
+	# Damage-per-hit is not a comparable number any more — the dragon does not use
+	# `attack_damage`/`attack_interval` at all; see `dragon_breath_test.gd` for the
+	# fire-breath equivalent of "hits harder than the lion".
 	assert_true(CreatureKind.detection_m(DRAGON) > CreatureKind.detection_m(LION))
 	assert_true(CreatureKind.run_speed(DRAGON) > CreatureKind.run_speed(LION))
+
+
+func test_the_dragon_declares_no_per_interval_attack() -> void:
+	# Confirms the table entry itself, not just the body's override: a stray
+	# `attack_damage` left in the table would be dead data nothing reads.
+	assert_almost_eq(CreatureKind.attack_damage(DRAGON), 0.0, 0.001)

@@ -134,3 +134,49 @@ func test_the_dragon_can_be_fought_while_the_player_is_flying() -> void:
 	assert_true(_dragon.health() < before,
 			"a shot should still land while the shooter is airborne")
 	assert_true(_player.is_flying(), "firing must not itself end flight")
+
+
+func test_fire_breath_costs_health_over_the_duration_of_a_live_cone() -> void:
+	# Well inside breath range: `_setup`'s own settling frames are enough for the very
+	# first decision to have already started a telegraph.
+	await _setup(10.0)
+	assert_eq(_dragon.brain().state_name(), "telegraph")
+
+	var stats: RefCounted = _player.stats()
+	# Full health is a fixed ceiling `SurvivalStats` regen cannot cross, so this stays
+	# exact even though the player is passively regenerating throughout this test.
+	assert_almost_eq(stats.health(), 100.0, 0.001, "the telegraph must not deal damage")
+
+	# Still well under the telegraph's declared duration.
+	await step_physics(20)
+	assert_eq(_dragon.brain().state_name(), "telegraph")
+	assert_almost_eq(stats.health(), 100.0, 0.001,
+			"no damage should land before the cone actually fires")
+
+	# Comfortably past both the telegraph and into a live breath.
+	await step_physics(90)
+	assert_eq(_dragon.brain().state_name(), "breath",
+			"should have committed to breathing by now")
+	assert_true(stats.health() < 100.0,
+			"standing in a live cone should cost health over its duration")
+
+
+func test_stepping_out_of_the_cone_mid_breath_stops_the_damage() -> void:
+	await _setup(10.0)
+	await step_physics(91)
+	assert_eq(_dragon.brain().state_name(), "breath")
+
+	# The cone is fixed at this point, aimed at roughly (0,10,0) from the dragon — well
+	# clear of it, not just further along the same line.
+	_player.global_position = Vector3(60.0, 10.0, 0.0)
+	# One decision interval's worth of frames, so the brain has actually re-evaluated
+	# the dodge before the health snapshot below is taken.
+	await step_physics(15)
+
+	var stats: RefCounted = _player.stats()
+	var health_after_dodging: float = stats.health()
+	await step_physics(90)
+	# Not exact equality: `SurvivalStats` passively regenerates a well-fed player, so a
+	# successful dodge should see health hold steady or climb, never fall further.
+	assert_true(stats.health() >= health_after_dodging - 0.001,
+			"stepping clear of the fixed cone should stop it costing health")

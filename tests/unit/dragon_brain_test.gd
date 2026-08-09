@@ -81,17 +81,18 @@ func test_the_dive_steers_towards_the_player_in_three_dimensions() -> void:
 			"should also steer downward, since the player is below cruise altitude")
 
 
-func test_reaching_the_player_starts_a_strike() -> void:
+func test_reaching_breath_range_starts_the_telegraph() -> void:
 	var brain := _brain()
 	var position := ANCHOR + Vector3.UP * Brain.CRUISE_ALTITUDE_M
-	brain.tick(0.2, _at(position, Vector3(Brain.ATTACK_RANGE_M * 0.6, 0.0, 0.0)))
-	assert_eq(brain.state_name(), "attack")
+	brain.tick(0.2, _at(position, Vector3(Brain.BREATH_RANGE_M * 0.6, 0.0, 0.0)))
+	assert_eq(brain.state_name(), "telegraph")
 	assert_true(brain.is_attacking())
+	assert_true(brain.is_telegraphing())
 	assert_almost_eq(brain.desired_direction().length(), 0.0, 0.001,
-			"a strike holds still rather than flying through the player")
+			"the windup holds still rather than flying through the player")
 
 
-func test_the_full_encounter_runs_patrol_dive_attack() -> void:
+func test_the_full_encounter_runs_patrol_dive_telegraph() -> void:
 	var brain := _brain()
 	var position := ANCHOR + Vector3.UP * Brain.CRUISE_ALTITUDE_M
 
@@ -101,8 +102,8 @@ func test_the_full_encounter_runs_patrol_dive_attack() -> void:
 	brain.tick(0.2, _at(position, Vector3(DETECTION * 0.5, -10.0, 0.0)))
 	assert_eq(brain.state_name(), "dive")
 
-	brain.tick(0.2, _at(position, Vector3(Brain.ATTACK_RANGE_M * 0.5, 0.0, 0.0)))
-	assert_eq(brain.state_name(), "attack")
+	brain.tick(0.2, _at(position, Vector3(Brain.BREATH_RANGE_M * 0.5, 0.0, 0.0)))
+	assert_eq(brain.state_name(), "telegraph")
 
 
 func test_the_player_escaping_the_dive_returns_it_to_patrol() -> void:
@@ -134,11 +135,13 @@ func test_a_mid_chase_dragon_still_turns_back_at_the_boundary() -> void:
 	brain.tick(0.2, _at(position, Vector3(DETECTION * 0.5, -10.0, 0.0)))
 	assert_eq(brain.state_name(), "dive")
 
-	# The player keeps retreating, dragging the chase out past the territory edge.
+	# The player keeps retreating, dragging the chase out past the territory edge. Kept
+	# outside breath range throughout, or the chase would end in a telegraph instead of
+	# at the territory boundary this test is actually about.
 	var chase_position := position
 	for _i in 60:
 		chase_position += brain.desired_direction() * 16.0 * 0.2
-		brain.tick(0.2, _at(chase_position, Vector3(30.0, 0.0, 0.0)))
+		brain.tick(0.2, _at(chase_position, Vector3(50.0, 0.0, 0.0)))
 
 	var distance := Vector2(chase_position.x - ANCHOR.x,
 			chase_position.z - ANCHOR.z).length()
@@ -180,3 +183,36 @@ func test_a_dragon_never_hunts_other_animals() -> void:
 	# Only the player is worth a dragon's attention — see SPEC and the file header.
 	var brain := _brain()
 	assert_false(brain.is_hunting_quarry())
+
+
+func test_the_telegraph_commits_to_a_breath_once_its_timer_runs_out() -> void:
+	# The state-machine shape of fire breath; see dragon_breath_test.gd for the cone,
+	# damage-over-time and cooldown detail this only sets up.
+	var brain := _brain()
+	var position := ANCHOR + Vector3.UP * Brain.CRUISE_ALTITUDE_M
+	var offset := Vector3(Brain.BREATH_RANGE_M * 0.5, 0.0, 0.0)
+	brain.tick(0.2, _at(position, offset))
+	assert_eq(brain.state_name(), "telegraph")
+
+	for _i in int(Brain.TELEGRAPH_SECONDS / 0.2) + 2:
+		brain.tick(0.2, _at(position, offset))
+	assert_eq(brain.state_name(), "breath")
+	assert_true(brain.is_breathing())
+
+
+func test_a_breath_ends_and_returns_to_patrol() -> void:
+	var brain := _brain()
+	var position := ANCHOR + Vector3.UP * Brain.CRUISE_ALTITUDE_M
+	var offset := Vector3(Brain.BREATH_RANGE_M * 0.5, 0.0, 0.0)
+	for _i in int(Brain.TELEGRAPH_SECONDS / 0.2) + 2:
+		brain.tick(0.2, _at(position, offset))
+	assert_eq(brain.state_name(), "breath")
+
+	# Stops on the exact tick the breath ends — one tick further and the cascade would
+	# already have re-evaluated into "dive" against this same still-present threat.
+	for _i in int(Brain.BREATH_DURATION_SECONDS / 0.2) + 2:
+		brain.tick(0.2, _at(position, offset))
+		if brain.state_name() != "breath":
+			break
+	assert_eq(brain.state_name(), "patrol",
+			"a finished breath should not linger, it should hand back to patrol")
