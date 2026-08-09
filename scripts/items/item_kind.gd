@@ -25,6 +25,7 @@ enum Kind {
 	FUEL,
 	MACHINE_GUN,
 	MACHINE_GUN_AMMO,
+	FLYING_SUIT,
 }
 
 ## Damage dealt swinging nothing at all. Enough to kill a deer eventually, so the game is
@@ -104,6 +105,10 @@ const ITEMS := {
 	Kind.MACHINE_GUN_AMMO: {
 		"name": "machine-gun ammo", "stack": 40, "nutrition": 0.0,
 	},
+	## Rarer than either gun: see `flight_fuel.gd` for the tank it fills once equipped.
+	## Equipping and refuelling are both the primary action, mirroring how armour is worn
+	## and a fire is fed — one verb per item type, not a second key.
+	Kind.FLYING_SUIT: {"name": "flying suit", "stack": 1, "nutrition": 0.0},
 }
 
 const ALL: Array[int] = [
@@ -122,6 +127,7 @@ const ALL: Array[int] = [
 	Kind.FUEL,
 	Kind.MACHINE_GUN,
 	Kind.MACHINE_GUN_AMMO,
+	Kind.FLYING_SUIT,
 ]
 
 
@@ -217,3 +223,7 @@ static func recoil_degrees(item: int) -> float:
 ## Whether holding the trigger keeps firing, rather than one round per click.
 static func is_automatic(item: int) -> bool:
 	return bool(firearm(item).get("automatic", false))
+
+
+static func is_flight_suit(item: int) -> bool:
+	return item == Kind.FLYING_SUIT

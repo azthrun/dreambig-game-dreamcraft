@@ -37,6 +37,9 @@ const TABLE := [
 	## Rarer than the pistol: the escalation from "a ranged option" to "an answer to the
 	## worst things on the island" has to be a later find, not an equally likely one.
 	{"item": ItemKind.Kind.MACHINE_GUN, "weight": 1.0, "count": Vector2i(1, 1)},
+	## As rare as the machine gun: seeing the island from above is the same tier of find
+	## as an answer to its worst predators, not an earlier or more common one.
+	{"item": ItemKind.Kind.FLYING_SUIT, "weight": 1.0, "count": Vector2i(1, 1)},
 ]
 
 ## How many separate draws a cache makes. More than one, so a crate reads as a supply

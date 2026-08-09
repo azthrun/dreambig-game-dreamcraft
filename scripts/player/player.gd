@@ -67,17 +67,36 @@ const MAX_BUOYANT_SPEED := 4.0
 ## Vertical speed when deliberately diving or surfacing.
 const SWIM_VERTICAL_SPEED := 2.6
 
+# --- flight --------------------------------------------------------------------
+
+const FLIGHT_SPEED := 9.0
+const FLIGHT_ACCELERATION := 20.0
+
 ## Y of the ocean surface. Set by the world so the player does not have to know how
 ## the sea was built.
 var water_level_y: float = 0.0
 
 var _swimming := false
 
+## Whether a flying suit has been equipped. Equipping consumes it from the inventory the
+## same way wearing armour does, so a found suit is either in the pack or in use, never
+## both — and, unlike the hotbar-selected firearms, it stays equipped while the player
+## selects a gun to fight from the air.
+var _flight_suit_equipped := false
+var _flying := false
+var _flight_fuel: RefCounted = FlightFuel.new()
+
 const SurvivalStats := preload("res://scripts/player/survival_stats.gd")
 const Inventory := preload("res://scripts/items/inventory.gd")
 const ItemKind := preload("res://scripts/items/item_kind.gd")
+const FlightFuel := preload("res://scripts/player/flight_fuel.gd")
 
 signal died
+
+## One-off things the player should be told: the suit was equipped, the tank is full,
+## there is no fuel left to fly on. Mirrors `Firearm.refused` and `ItemPlacer.message` —
+## the HUD listens the same way.
+signal message(text: String)
 
 ## Where death returns the player to. Set by the world once the island exists.
 var respawn_point := Vector3.ZERO
@@ -224,10 +243,63 @@ func wear_selected() -> bool:
 	return true
 
 
+func has_flight_suit() -> bool:
+	return _flight_suit_equipped
+
+
+func is_flying() -> bool:
+	return _flying
+
+
+## The suit's fuel tank. Read by the HUD and by tests, which cannot see the screen.
+func flight_fuel() -> RefCounted:
+	return _flight_fuel
+
+
+## Equips the flying suit if it is what is selected. Returns whether anything changed,
+## the same shape as `wear_selected`.
+func equip_selected_flight_suit() -> bool:
+	var item: int = _inventory.selected_item()
+	if item != ItemKind.Kind.FLYING_SUIT or _flight_suit_equipped:
+		return false
+	_inventory.remove_from_slot(_inventory.selected_slot(), 1)
+	_flight_suit_equipped = true
+	return true
+
+
+## Empties the held fuel item into the suit's tank. Refused only once the tank is
+## already full, so a near-full tank does not waste a whole found item's worth of fuel.
+func refuel_flight_suit() -> bool:
+	if not _flight_suit_equipped or _flight_fuel.is_full():
+		return false
+	if _inventory.remove_from_slot(_inventory.selected_slot(), 1) <= 0:
+		return false
+	_flight_fuel.add(FlightFuel.FUEL_PER_ITEM)
+	return true
+
+
+## Toggles flight. Starting requires the suit and fuel; stopping is always allowed, so
+## the player can choose to land as well as run dry.
+func toggle_flight() -> void:
+	if _flying:
+		_flying = false
+		return
+	if not _flight_suit_equipped:
+		message.emit("no flying suit equipped")
+		return
+	if _flight_fuel.is_empty():
+		message.emit("the flying suit is out of fuel")
+		return
+	_swimming = false
+	_flying = true
+
+
 func status_line() -> String:
 	var worn := "" if _worn == ItemKind.Kind.NONE \
 			else " | wearing: %s" % ItemKind.name_of(_worn)
-	return "%s\n%s%s" % [_stats.status_line(), _inventory.status_line(), worn]
+	var suit := "" if not _flight_suit_equipped \
+			else " | %s%s" % [_flight_fuel.status_line(), " FLYING" if _flying else ""]
+	return "%s\n%s%s%s" % [_stats.status_line(), _inventory.status_line(), worn, suit]
 
 
 ## Returns the player to the shore with their condition reset. Progress is kept; only
@@ -235,6 +307,7 @@ func status_line() -> String:
 func respawn() -> void:
 	_stats.revive()
 	_swimming = false
+	_flying = false
 	_shelter_count = 0
 	velocity = Vector3.ZERO
 	set_crouching(false)
@@ -282,6 +355,10 @@ func _unhandled_input(event: InputEvent) -> void:
 
 	if event is InputEventMouseMotion and mouse_captured():
 		_look(event.relative)
+		return
+
+	if event.is_action_pressed(&"activate_flight"):
+		toggle_flight()
 		return
 
 	_handle_hotbar_input(event)
@@ -332,6 +409,10 @@ func _physics_process(delta: float) -> void:
 	_update_swim_state()
 	if _swimming:
 		_swim(delta)
+		return
+
+	if _flying:
+		_fly(delta)
 		return
 
 	_update_crouch(delta)
@@ -391,6 +472,45 @@ func _swim(delta: float) -> void:
 				-MAX_BUOYANT_SPEED, MAX_BUOYANT_SPEED)
 
 	move_and_slide()
+
+
+## Flying: full three-dimensional movement steered by mouselook, fuel spent whether or
+## not the player is actually moving. Fuel exhaustion drops `_flying` without touching
+## velocity itself, so the very next `_physics_process` call falls through to the
+## ordinary ground/air branch and gravity takes over — a fall, not a stop.
+func _fly(delta: float) -> void:
+	if _crouching:
+		set_crouching(false)
+
+	_flight_fuel.drain(delta)
+	if _flight_fuel.is_empty():
+		_flying = false
+		message.emit("the flying suit is out of fuel")
+	else:
+		var wish := _flight_wish_direction()
+		velocity = velocity.move_toward(wish * FLIGHT_SPEED, FLIGHT_ACCELERATION * delta)
+
+	move_and_slide()
+
+
+## Forward/back and strafe follow the camera's full look direction, pitch included —
+## looking up and holding forward climbs — while jump/crouch add a straight vertical
+## component, the same keys that dive and surface while swimming.
+func _flight_wish_direction() -> Vector3:
+	var input := Input.get_vector(
+			&"move_left", &"move_right", &"move_forward", &"move_back")
+	var vertical := 0.0
+	if Input.is_action_pressed(&"jump"):
+		vertical += 1.0
+	if Input.is_action_pressed(&"crouch"):
+		vertical -= 1.0
+
+	if input.is_zero_approx() and vertical == 0.0:
+		return Vector3.ZERO
+
+	var basis := _camera.global_transform.basis if _camera != null else transform.basis
+	var wish := basis * Vector3(input.x, 0.0, input.y) + Vector3.UP * vertical
+	return Vector3.ZERO if wish.is_zero_approx() else wish.normalized()
 
 
 ## Movement input as a unit vector in world space, relative to where the player is

@@ -30,6 +30,7 @@ const EXPECTED_ACTIONS: Array[StringName] = [
 	&"hotbar_5",
 	&"pause",
 	&"debug_time_scale",
+	&"activate_flight",
 ]
 
 

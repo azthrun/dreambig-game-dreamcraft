@@ -61,8 +61,10 @@ func bind(player: Node, climate: Node = null) -> void:
 		_harvester = _player.harvester()
 
 	# Things that happen once and have to be said: what was eaten, why a fire refused
-	# fuel, that the gun is empty. These were being emitted and displayed nowhere.
-	for path in [^"ItemPlacer", ^"Firearm"]:
+	# fuel, that the gun is empty, that the flying suit is out of fuel. "." is the
+	# player itself, which emits `message` directly for flight — activating it is a
+	# dedicated key rather than the primary action ItemPlacer already dispatches.
+	for path in [^"ItemPlacer", ^"Firearm", ^"."]:
 		var component := _player.get_node_or_null(path) if _player != null else null
 		if component == null:
 			continue

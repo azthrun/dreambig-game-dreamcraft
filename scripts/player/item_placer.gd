@@ -87,6 +87,20 @@ func use_held_item() -> bool:
 		message.emit("already wearing that")
 		return false
 
+	if ItemKind.is_flight_suit(item):
+		if _player.equip_selected_flight_suit():
+			message.emit("flying suit equipped")
+			return true
+		message.emit("already equipped")
+		return false
+
+	if item == ItemKind.Kind.FUEL and _player.has_flight_suit():
+		if _player.refuel_flight_suit():
+			message.emit("fuel added to the flying suit")
+			return true
+		message.emit("the flying suit's tank is already full")
+		return false
+
 	if ItemKind.is_food(item):
 		if _player.eat_selected():
 			message.emit("ate %s" % ItemKind.name_of(item))
