@@ -18,6 +18,11 @@ signal restored
 var item: int = ItemKind.Kind.NONE
 var amount: int = 1
 
+## The placement's cell-derived id — see `prop_placer.gd`. Set directly by `props.gd`
+## after building, the same way `prop_kind`/`prop_yield` are recorded as node meta, so a
+## save file can key depletion state to a specific prop without re-deriving placement.
+var prop_id: int = 0
+
 ## How long a depleted prop takes to come back. Long enough that an area can be stripped
 ## and has to be left alone, short enough that the island is not permanently bare.
 var respawn_seconds: float = 150.0
@@ -85,6 +90,16 @@ func tick(delta: float) -> void:
 	_remaining -= delta
 	if _remaining <= 0.0:
 		restore()
+
+
+## Restores a partway-regrown depleted state, for a save file to replay. Distinct from
+## `harvest()`, which always resets the timer to a full `respawn_seconds` — a save has to
+## be able to put back an arbitrary remaining time instead.
+func restore_depleted(remaining: float) -> void:
+	_depleted = true
+	_remaining = maxf(remaining, 0.0)
+	_apply_visuals()
+	set_process(true)
 
 
 func restore() -> void:

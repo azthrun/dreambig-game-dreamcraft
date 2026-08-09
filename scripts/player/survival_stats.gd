@@ -135,6 +135,16 @@ func tick(delta: float, sprinting: bool) -> void:
 				rate("max_health"))
 
 
+## Sets all three pools to exact saved values, for a save file to replay. Distinct from
+## `revive`, which resets to a fixed full/empty/full rather than arbitrary figures, and
+## from `damage`/`heal`/`eat`, which are all relative to whatever the pools already are.
+func restore(p_health: float, p_hunger: float, p_stamina: float) -> void:
+	_health = clampf(p_health, 0.0, rate("max_health"))
+	_hunger = clampf(p_hunger, 0.0, rate("max_hunger"))
+	_stamina = clampf(p_stamina, 0.0, rate("max_stamina"))
+	_regen_delay = 0.0
+
+
 func damage(amount: float) -> void:
 	if amount <= 0.0:
 		return

@@ -110,6 +110,17 @@ func rack() -> Node:
 	return _rack
 
 
+## Restores mid-cook state, for a save file to replay. Distinct from `add_raw_meat`,
+## which always starts the elapsed timer at zero — a save has to be able to put back
+## however far along the cook (or burn) already was.
+func restore_cooking(count: int, elapsed: float) -> void:
+	if count <= 0:
+		return
+	_cooking = count
+	_cook_elapsed = maxf(elapsed, 0.0)
+	_refresh_rack()
+
+
 func fuel_remaining() -> float:
 	return _fuel
 

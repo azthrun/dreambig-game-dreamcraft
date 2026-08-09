@@ -50,6 +50,12 @@ func can_fly() -> bool:
 	return not is_empty()
 
 
+## Sets the tank to an exact value, for a save file to replay — `add` and `drain` are
+## both relative, which is right for gameplay but not for restoring a precise figure.
+func set_fuel(value: float) -> void:
+	_fuel = clampf(value, 0.0, _capacity)
+
+
 ## Adds fuel, capped at capacity. Returns how much was actually added, the same
 ## partial-success shape as `Inventory.add`.
 func add(amount: float) -> float:

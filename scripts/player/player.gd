@@ -243,6 +243,13 @@ func wear_selected() -> bool:
 	return true
 
 
+## Sets what is worn directly, bypassing the inventory side effects `wear_selected` has
+## (consuming the held slot, returning the old garment to the pack) — for a save file to
+## replay, where the inventory is being restored separately and on its own terms.
+func set_worn(item: int) -> void:
+	_worn = item
+
+
 func has_flight_suit() -> bool:
 	return _flight_suit_equipped
 
@@ -254,6 +261,12 @@ func is_flying() -> bool:
 ## The suit's fuel tank. Read by the HUD and by tests, which cannot see the screen.
 func flight_fuel() -> RefCounted:
 	return _flight_fuel
+
+
+## Sets whether the suit is equipped directly, bypassing `equip_selected_flight_suit`'s
+## inventory side effect — for a save file to replay.
+func set_flight_suit_equipped(equipped: bool) -> void:
+	_flight_suit_equipped = equipped
 
 
 ## Equips the flying suit if it is what is selected. Returns whether anything changed,

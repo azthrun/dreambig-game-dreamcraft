@@ -113,10 +113,19 @@ func advance(delta: float) -> bool:
 	return changed
 
 
-## Forces a condition, for debugging and for restoring a save.
+## Forces a condition, for debugging. Re-rolls the duration, which is exactly what a
+## debug override wants and a save restore does not — see `restore`.
 func set_state(state: int) -> void:
 	_state = state
 	_remaining = _roll_duration(state)
+
+
+## Restores an exact condition and countdown, for a save file to replay. Distinct from
+## `set_state`, which re-rolls the duration — a save has to put back the countdown that
+## was actually left, not a fresh one.
+func restore(state: int, remaining: float) -> void:
+	_state = state
+	_remaining = maxf(remaining, 0.0)
 
 
 static func name_of(state: int) -> String:

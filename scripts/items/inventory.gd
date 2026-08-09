@@ -180,6 +180,25 @@ func remove_from_slot(slot: int, count: int = 1) -> int:
 	return taken
 
 
+## Restores exact per-slot contents and the selected slot, for a save file to replay.
+## `slots` is an array of `{slot, item, count}`. Bypasses `add`'s greedy stacking, which
+## would consolidate a saved layout into fewer slots than it actually had — which slot a
+## stack sits in is something a player sees, not an implementation detail to discard.
+func restore(slots: Array, selected: int = 0) -> void:
+	for i in _capacity:
+		_items[i] = ItemKind.Kind.NONE
+		_counts[i] = 0
+	for entry in slots:
+		var slot := int(entry.get("slot", -1))
+		if slot < 0 or slot >= _capacity:
+			continue
+		_items[slot] = int(entry.get("item", ItemKind.Kind.NONE))
+		_counts[slot] = int(entry.get("count", 0))
+	_selected = clampi(selected, 0, HOTBAR_SLOTS - 1)
+	changed.emit()
+	selection_changed.emit(_selected)
+
+
 # --- hotbar -------------------------------------------------------------------
 
 func selected_slot() -> int:

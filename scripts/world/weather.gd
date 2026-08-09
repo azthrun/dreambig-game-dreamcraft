@@ -53,12 +53,20 @@ func is_precipitating() -> bool:
 	return WeatherModel.is_precipitating(current())
 
 
-## Forces a condition. Used by the debug overlay, the screenshot probe, and later by
-## save loading.
+## Forces a condition. Used by the debug overlay and the screenshot probe.
 func set_state(state: int) -> void:
 	if _model == null:
 		return
 	_model.set_state(state)
+	weather_changed.emit(state)
+
+
+## Restores an exact condition and countdown from a save, without re-rolling the
+## duration the way `set_state` does.
+func restore(state: int, remaining: float) -> void:
+	if _model == null:
+		return
+	_model.restore(state, remaining)
 	weather_changed.emit(state)
 
 

@@ -40,6 +40,14 @@ func placed_fires() -> Array[Node3D]:
 	return _fires
 
 
+## Adds a fire this placer did not itself place — a save restoring campfires from a
+## previous session — so refuelling and cooking-nearby find it the same as one lit this
+## session. The caller is responsible for parenting it into the world and registering it
+## with the climate as a heat source; this only makes it known to this placer.
+func register_fire(fire: Node3D) -> void:
+	_fires.append(fire)
+
+
 func _unhandled_input(event: InputEvent) -> void:
 	if not event.is_action_pressed(&"fire"):
 		return

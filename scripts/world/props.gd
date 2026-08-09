@@ -14,6 +14,7 @@ const Config := preload("res://scripts/config.gd")
 
 var _counts: Dictionary = {}
 var _caches: Array[Node] = []
+var _harvestables: Array[Node] = []
 
 
 ## Builds every prop for a world grid. Returns per-kind counts.
@@ -22,6 +23,7 @@ func populate(map: RefCounted, seed_value: int) -> Dictionary:
 		child.queue_free()
 	_counts = {}
 	_caches.clear()
+	_harvestables.clear()
 
 	var placer: RefCounted = PropPlacer.new()
 	var factory: RefCounted = PropFactory.new()
@@ -43,8 +45,12 @@ func populate(map: RefCounted, seed_value: int) -> Dictionary:
 
 		var harvestable := prop.get_node_or_null(^"Harvestable")
 		if harvestable != null:
+			# Same cell-derived id a cache gets — see `prop_placer.gd` — so depletion
+			# state can be saved and restored per-prop the same way looted state is.
+			harvestable.prop_id = int(placement.get("id", 0))
 			harvestable.depleted.connect(_on_prop_depleted)
 			harvestable.restored.connect(_on_prop_restored)
+			_harvestables.append(harvestable)
 		_apply_culling(prop)
 		_counts[kind] = int(_counts.get(kind, 0)) + 1
 
@@ -67,6 +73,12 @@ func _add_cache(prop: Node3D, seed_value: int, cache_id: int) -> void:
 ## re-opening a looted crate is the one way ammunition could be farmed.
 func caches() -> Array[Node]:
 	return _caches
+
+
+## Every harvestable on the island. Saving records which of these are depleted and how
+## long until they regrow, keyed by `prop_id`.
+func harvestables() -> Array[Node]:
+	return _harvestables
 
 
 func counts() -> Dictionary:

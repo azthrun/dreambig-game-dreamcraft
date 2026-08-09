@@ -63,13 +63,21 @@ func time_until_refill() -> float:
 	return _remaining
 
 
+## How many times this crate has been emptied. Read by a save so a reloaded crate's
+## *next* refill still advances the roll rather than repeating one already given out.
+func refills_count() -> int:
+	return _refills
+
+
 ## Restores a cache to its opened state, for a save file to replay. `remaining` is what
-## was left on the refill timer.
-func restore_looted(remaining: float = RESPAWN_SECONDS) -> void:
+## was left on the refill timer; `refills` is how many times it had already been emptied,
+## which the next `refill()` roll depends on.
+func restore_looted(remaining: float = RESPAWN_SECONDS, refills: int = 0) -> void:
 	contents = {}
 	_emptied = true
 	_looted = true
 	_remaining = maxf(remaining, 0.0)
+	_refills = maxi(refills, 0)
 	_apply_visuals()
 	set_process(true)
 
